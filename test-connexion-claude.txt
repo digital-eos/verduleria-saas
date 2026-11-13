@@ -1,0 +1,3 @@
+Test de connexion Claude <-> dossier verduleria-saas
+Cree le 2026-11-13 a 12:08 (heure de Buenos Aires).
+Tu peux supprimer ce fichier.
