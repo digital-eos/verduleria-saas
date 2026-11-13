@@ -11,6 +11,7 @@ const links = [
   { href: "/productos", label: "Productos", admin: true },
   { href: "/usuarios", label: "Usuarios", admin: true },
   { href: "/auditoria", label: "Auditoría", admin: true },
+  { href: "/balanza", label: "Balanza", admin: true },
 ];
 
 export default function Nav() {

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
 
 const PUBLIC = ["/login", "/api/auth/login", "/api/auth/setup"];
-const ADMIN_PAGES = ["/productos", "/usuarios", "/auditoria", "/dashboard"];
+const ADMIN_PAGES = ["/productos", "/usuarios", "/auditoria", "/dashboard", "/balanza"];
 
 const matches = (path: string, list: string[]) => list.some((p) => path === p || path.startsWith(p + "/"));
 

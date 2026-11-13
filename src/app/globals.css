@@ -129,3 +129,14 @@ tr.cancelled td { color: var(--muted); text-decoration: line-through; }
 .details { font-size: 13px; color: var(--muted); }
 .search-results { display: flex; flex-direction: column; gap: 4px; margin: -6px 0 12px; }
 .search-results button { text-align: left; background: #f3f6f3; font-size: 15px; }
+
+/* --- Diagnóstico balanza --- */
+.spy-log { max-height: 60vh; overflow: auto; background: #101510; color: #d7e6d7; border-radius: 8px; padding: 10px; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.spy-log .muted { color: #8fa38f; }
+.spy-entry { display: flex; gap: 10px; padding: 6px 0; border-bottom: 1px solid #223022; }
+.spy-time { color: #7f957f; flex: 0 0 auto; }
+.spy-dir { font-size: 11px; color: #9bc59b; }
+.spy-entry.out .spy-dir { color: #e2b45c; }
+.spy-info { color: #8fb8e8; }
+.spy-text { margin: 2px 0 0; white-space: pre-wrap; word-break: break-all; color: #f2f7f2; }
+.spy-hex { margin: 2px 0 0; white-space: pre-wrap; word-break: break-all; color: #7f957f; font-size: 12px; }
