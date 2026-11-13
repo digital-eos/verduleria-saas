@@ -8,9 +8,9 @@
  *   PC  -> ACK (0x06) si llegó bien / NACK (0x15) si no
  * Config por defecto de la balanza: 9600 baudios, 8 bits, sin paridad, 1 bit de stop.
  *
- * El manual NO detalla el formato exacto del PESO ni el CRC, así que el parser
- * es tolerante: toma los dígitos entre STX y ETX e interpreta el peso.
- * Ajustá `parseWeightFrame` cuando veas una trama real (el modo debug la muestra).
+ * CRC según manual (pág. 29): STX XOR Dato1 XOR ... XOR DatoN XOR ETX (1 byte).
+ * El manual NO detalla el formato del PESO, así que el parser es tolerante:
+ * toma los dígitos entre STX y ETX. Ajustá `parseWeightFrame` con una trama real.
  */
 
 const ENQ = 0x05, STX = 0x02, ETX = 0x03, ACK = 0x06, NACK = 0x15, WACK = 0x11;
@@ -27,6 +27,11 @@ export const isSerialSupported = () =>
   typeof navigator !== "undefined" && "serial" in navigator;
 
 export type ScaleReading = { kg: number; raw: string };
+
+/** CRC Systel: XOR de STX, todos los bytes de datos y ETX */
+export function systelCrc(payload: number[]): number {
+  return payload.reduce((acc, b) => acc ^ b, STX ^ ETX);
+}
 
 /** Interpreta el contenido entre STX y ETX. */
 export function parseWeightFrame(payload: string): number | null {
@@ -113,9 +118,8 @@ export class SystelScale {
         byte = await this.readByte(timeoutMs);
       }
       if (byte === null) { await this.send(NACK); continue; }
-      // Consumimos el CRC (1-2 bytes) sin validarlo: algoritmo no documentado.
-      await this.readByte(100);
-      await this.readByte(100);
+      const crc = await this.readByte(300);
+      if (crc === null || crc !== systelCrc(payload)) { await this.send(NACK); continue; }
 
       const raw = String.fromCharCode(...payload);
       const kg = parseWeightFrame(raw);

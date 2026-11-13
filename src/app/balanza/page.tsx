@@ -8,7 +8,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { isSerialSupported } from "@/lib/scale";
+import { isSerialSupported, parseWeightFrame, systelCrc } from "@/lib/scale";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Port = any;
@@ -40,6 +40,18 @@ function toReadable(b: number[]) {
       return `⟨${x.toString(16).padStart(2, "0").toUpperCase()}⟩`;
     })
     .join("");
+}
+
+/** Si el mensaje es una trama Systel STX+PESO+ETX+CRC, la interpreta */
+function systelInfo(b: number[]): string | null {
+  const i = b.indexOf(0x02);
+  const j = b.indexOf(0x03, i + 1);
+  if (i < 0 || j < 0 || j + 1 >= b.length) return null;
+  const payload = b.slice(i + 1, j);
+  const ok = b[j + 1] === systelCrc(payload);
+  const raw = String.fromCharCode(...payload);
+  const kg = parseWeightFrame(raw);
+  return `Trama Systel ${ok ? "✓ CRC correcto" : "✗ CRC incorrecto"} · datos "${raw}"${kg !== null ? ` · ≈ ${kg} kg (a confirmar)` : ""}`;
 }
 
 function parseHexInput(s: string): number[] | null {
@@ -342,6 +354,7 @@ export default function BalanzaDiagPage() {
                   <span className="spy-dir">{e.dir === "in" ? "◀ balanza" : "▶ enviado"} · {e.bytes.length} B</span>
                   <pre className="spy-text">{toReadable(e.bytes)}</pre>
                   {showHex && <pre className="spy-hex">{toHex(e.bytes)}</pre>}
+                  {e.dir === "in" && systelInfo(e.bytes) && <span className="spy-info">{systelInfo(e.bytes)}</span>}
                 </div>
               )}
             </div>
