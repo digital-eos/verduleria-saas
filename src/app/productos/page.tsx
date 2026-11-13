@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import type { ProductDTO, Unit } from "@/lib/dto";
-import { formatUnitPrice } from "@/lib/format";
+import { formatUnitPrice, normalizeCode } from "@/lib/format";
 import { apiFetch } from "@/components/SessionProvider";
+import BarcodeScanner from "@/components/BarcodeScanner";
 
 type Form = { id?: number; code: string; name: string; unit: Unit; price: string };
 const empty: Form = { code: "", name: "", unit: "KG", price: "" };
@@ -14,6 +15,33 @@ export default function ProductosPage() {
   const [showInactive, setShowInactive] = useState(false);
   const [form, setForm] = useState<Form>(empty);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [scanning, setScanning] = useState(false);
+
+  /** Código escaneado: si ya existe se abre para editar, si no se prepara el alta (por unidad). */
+  async function loadScanned(raw: string) {
+    const code = normalizeCode(raw);
+    if (!code) return;
+    setError("");
+    setNotice("");
+    const res = await apiFetch(`/api/products/by-code/${encodeURIComponent(code)}`);
+    if (res.ok) {
+      const p = (await res.json()) as ProductDTO;
+      setForm({ id: p.id, code: p.code, name: p.name, unit: p.unit, price: String(p.price) });
+      setNotice(`"${p.name}" ya está cargado. Podés cambiarle el precio.`);
+    } else if (res.status === 404) {
+      setForm({ ...empty, code, unit: "UNIT" });
+      setNotice("Producto nuevo: completá nombre y precio.");
+    } else {
+      setError("No se pudo buscar el código");
+    }
+  }
+
+  // Viene de /precios?code=... ("Cargar este producto ahora")
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("code");
+    if (code) void loadScanned(code);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function load() {
     const params = new URLSearchParams({ ...(q ? { q } : {}), ...(showInactive ? { all: "1" } : {}) });
@@ -38,6 +66,7 @@ export default function ProductosPage() {
     });
     const data = await res.json();
     if (!res.ok) return setError(data.error ?? "Error al guardar");
+    setNotice(`${form.id ? "Guardado" : "Agregado"}: ${form.name} ✓`);
     setForm(empty);
     load();
   }
@@ -61,10 +90,14 @@ export default function ProductosPage() {
     <div className="grid-pos">
       <section className="panel">
         <h2>{form.id ? "Editar producto" : "Nuevo producto"}</h2>
+        <button type="button" className="big" onClick={() => setScanning(true)} style={{ marginBottom: 14 }}>
+          📷 Escanear código de barras
+        </button>
         {error && <div className="msg error">{error}</div>}
+        {notice && !error && <div className="msg ok">{notice}</div>}
         <form onSubmit={save}>
           <div className="field">
-            <label>Código (PLU, igual que en la balanza)</label>
+            <label>Código (PLU de la balanza o código de barras)</label>
             <input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} required />
           </div>
           <div className="field">
@@ -155,6 +188,16 @@ export default function ProductosPage() {
         </table>
         {products.length === 0 && <p className="muted">No hay productos.</p>}
       </section>
+
+      {scanning && (
+        <BarcodeScanner
+          onDetected={(code) => {
+            setScanning(false);
+            void loadScanned(code);
+          }}
+          onCancel={() => setScanning(false)}
+        />
+      )}
     </div>
   );
 }
