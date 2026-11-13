@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+enum Role {
+  ADMIN   // Dueño: todo
+  CASHIER // Cajero: caja y ventas del día
+}
+
+model User {
+  id           Int        @id @default(autoincrement())
+  username     String     @unique
+  name         String
+  passwordHash String
+  role         Role       @default(CASHIER)
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  sales        Sale[]
+  auditLogs    AuditLog[]
+}
+
+/// Registro de acciones sensibles: logins, cambios de precio, anulaciones, usuarios…
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  userId    Int?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  username  String
+  action    String
+  entity    String
+  entityId  String?
+  details   Json?
+
+  @@index([createdAt])
+  @@index([action])
+}
+
+enum SaleStatus {
+  COMPLETED
+  CANCELLED
+}
+
+/// Cómo se vende el producto: por kilo (con balanza) o por unidad (atado, lechuga, maple…)
+enum SaleUnit {
+  KG
+  UNIT
+}
+
+enum PaymentMethod {
+  CASH        // Efectivo
+  DEBIT       // Débito
+  CREDIT      // Crédito
+  TRANSFER    // Transferencia
+  MERCADOPAGO // Mercado Pago / QR
+  OTHER       // Otro
+}
+
+/// Catálogo de productos. `code` es el PLU (el mismo número que tiene cargado la balanza).
+/// `price` es el precio por kilo si unit = KG, o por unidad si unit = UNIT.
+model Product {
+  id        Int        @id @default(autoincrement())
+  code      String     @unique
+  name      String
+  unit      SaleUnit   @default(KG)
+  price     Decimal    @db.Decimal(12, 2)
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  saleItems SaleItem[]
+}
+
+/// Una venta = un carrito validado. El medio de pago es opcional.
+model Sale {
+  id            Int            @id @default(autoincrement())
+  createdAt     DateTime       @default(now())
+  total         Decimal        @db.Decimal(12, 2)
+  status        SaleStatus     @default(COMPLETED)
+  paymentMethod PaymentMethod?
+  userId        Int?
+  user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items         SaleItem[]
+
+  @@index([createdAt])
+}
+
+/// Línea del carrito. Se guarda una "foto" del nombre, unidad y precio al momento de la venta,
+/// así si después cambiás el precio del producto, el histórico no se altera.
+/// `quantity` = kilos (unit KG) o unidades (unit UNIT).
+model SaleItem {
+  id          Int      @id @default(autoincrement())
+  saleId      Int
+  sale        Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  productId   Int
+  product     Product  @relation(fields: [productId], references: [id])
+  productCode String
+  productName String
+  unit        SaleUnit
+  unitPrice   Decimal  @db.Decimal(12, 2)
+  quantity    Decimal  @db.Decimal(10, 3)
+  subtotal    Decimal  @db.Decimal(12, 2)
+
+  @@index([saleId])
+  @@index([productId])
+}
