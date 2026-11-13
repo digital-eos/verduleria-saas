@@ -140,3 +140,38 @@ tr.cancelled td { color: var(--muted); text-decoration: line-through; }
 .spy-info { color: #8fb8e8; }
 .spy-text { margin: 2px 0 0; white-space: pre-wrap; word-break: break-all; color: #f2f7f2; }
 .spy-hex { margin: 2px 0 0; white-space: pre-wrap; word-break: break-all; color: #7f957f; font-size: 12px; }
+
+/* --- Responsive / móvil --- */
+img, video { max-width: 100%; }
+.grid-pos > *, .grid-2 > * { min-width: 0; }
+.modal { max-height: 92vh; max-height: 92dvh; overflow-y: auto; }
+
+@media (max-width: 700px) {
+  main { padding: 12px; }
+  h1 { font-size: 22px; }
+
+  /* Barra superior: marca + usuario arriba, menú desplazable abajo */
+  .topbar { flex-wrap: wrap; gap: 8px 12px; padding: 10px 12px; }
+  .topbar .brand { font-size: 16px; }
+  .topbar nav {
+    order: 3; width: 100%; overflow-x: auto; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch; margin: 0 -4px;
+  }
+  .topbar nav::-webkit-scrollbar { display: none; }
+  .topbar nav a { white-space: nowrap; padding: 8px 12px; flex: 0 0 auto; }
+  .user-box { gap: 8px; font-size: 13px; }
+  .user-box small { display: none; }
+
+  /* Las tablas anchas se desplazan dentro del panel, no rompen la página */
+  .panel { padding: 14px; overflow-x: auto; }
+  th, td { padding: 8px 6px; }
+  .total-box { font-size: 24px; }
+
+  /* 16px evita el zoom automático de iOS al enfocar */
+  .toolbar input, .toolbar select { font-size: 16px; }
+  .toolbar > div { min-width: 0; flex: 1 1 140px; }
+  .stat { min-width: 130px; }
+
+  .modal { padding: 16px; }
+  button.big { font-size: 18px; padding: 14px; }
+}

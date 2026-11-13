@@ -6,6 +6,7 @@ import { formatMoney, formatQty, formatUnitPrice, normalizeCode, parseWeightInpu
 import { parseScaleLabel } from "@/lib/barcode";
 import { SystelScale, isSerialSupported } from "@/lib/scale";
 import { apiFetch } from "@/components/SessionProvider";
+import BarcodeScanner from "@/components/BarcodeScanner";
 
 type CartLine = {
   key: string;
@@ -51,6 +52,19 @@ export default function CajaPage() {
   const codeRef = useRef<HTMLInputElement>(null);
   const qtyRef = useRef<HTMLInputElement>(null);
 
+  // PC (Chrome/Edge con Web Serial): balanza + lector USB. Móvil: cámara.
+  const [hasSerial, setHasSerial] = useState<boolean | null>(null);
+  const hasSerialRef = useRef(false);
+  const [scanning, setScanning] = useState(false);
+  const scanBuf = useRef({ text: "", last: 0 });
+  useEffect(() => {
+    const s = isSerialSupported();
+    hasSerialRef.current = s;
+    setHasSerial(s);
+  }, []);
+  /** En móvil no enfocamos para no abrir el teclado después de cada escaneo */
+  const focusCode = () => { if (hasSerialRef.current) codeRef.current?.focus(); };
+
   // Persistir carrito ante un refresh accidental
   useEffect(() => {
     try {
@@ -78,7 +92,45 @@ export default function CajaPage() {
     setProduct(null);
     setCodeInput("");
     setQtyInput("");
-    codeRef.current?.focus();
+    focusCode();
+  }
+
+  /** Etiqueta EAN-13 impresa por la balanza: PLU + peso (o importe) */
+  async function addFromLabel(label: NonNullable<ReturnType<typeof parseScaleLabel>>) {
+    const p = await fetchProduct(label.code);
+    let qty = label.mode === "CANTIDAD" ? label.value : label.value / p.price;
+    qty = p.unit === "UNIT" ? Math.max(1, Math.round(qty)) : Math.round(qty * 1000) / 1000;
+    addLine(p, qty);
+  }
+
+  /**
+   * Código escaneado (cámara o lector USB). Primero se busca el código exacto
+   * (productos envasados); si no existe y es una etiqueta de la balanza, se usa esa.
+   * Por unidad: suma 1 directo. Por kilo: pide el peso.
+   */
+  async function addScanned(raw: string) {
+    const code = raw.trim();
+    if (!code) return;
+    setMessage(null);
+    setResults([]);
+    setProduct(null);
+    setCodeInput("");
+    setQtyInput("");
+    try {
+      const res = await apiFetch(`/api/products/by-code/${encodeURIComponent(normalizeCode(code))}`);
+      if (res.ok) {
+        const p = (await res.json()) as ProductDTO;
+        if (p.unit === "UNIT") addLine(p, 1);
+        else await selectProduct(p);
+        return;
+      }
+      if (res.status !== 404) throw new Error("No se pudo buscar el producto");
+      const label = parseScaleLabel(code);
+      if (label) return await addFromLabel(label);
+      throw new Error(`Producto no cargado (código ${code}). Cargalo en Productos.`);
+    } catch (e) {
+      setMessage({ type: "error", text: (e as Error).message });
+    }
   }
 
   /** Selecciona un producto y pasa al campo cantidad / lee la balanza */
@@ -113,14 +165,8 @@ export default function CajaPage() {
         setResults(found.slice(0, 8));
         return;
       }
-      const label = parseScaleLabel(raw);
-      if (label) {
-        const p = await fetchProduct(label.code);
-        let qty = label.mode === "CANTIDAD" ? label.value : label.value / p.price;
-        qty = p.unit === "UNIT" ? Math.max(1, Math.round(qty)) : Math.round(qty * 1000) / 1000;
-        addLine(p, qty);
-        return;
-      }
+      // Código de barras (8+ dígitos, típicamente del lector USB): se agrega directo
+      if (/^\d{8,}$/.test(raw)) return await addScanned(raw);
       await selectProduct(await fetchProduct(normalizeCode(raw)));
     } catch (e) {
       setProduct(null);
@@ -202,6 +248,7 @@ export default function CajaPage() {
       if (!res.ok) throw new Error(data.error ?? "No se pudo guardar la venta");
       setReceipt(data);
       setCart([]);
+      setMessage(null);
       setPayment(null);
     } catch (e) {
       setMessage({ type: "error", text: (e as Error).message });
@@ -210,12 +257,30 @@ export default function CajaPage() {
     }
   }
 
-  // Atajos: F2 = validar venta, F4 = leer balanza, Esc = cerrar ticket
+  // Atajos: F2 = validar venta, F4 = leer balanza, Esc = cerrar ticket.
+  // Además escucha el lector USB cuando el foco NO está en un campo
+  // (el lector "tipea" muy rápido y termina con Enter).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const inField = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
+      if (!inField && !receipt) {
+        const now = e.timeStamp;
+        const buf = scanBuf.current;
+        if (e.key.length === 1) {
+          buf.text = now - buf.last < 50 ? buf.text + e.key : e.key;
+          buf.last = now;
+        } else if (e.key === "Enter") {
+          if (buf.text.length >= 6 && now - buf.last < 100) {
+            e.preventDefault();
+            void addScanned(buf.text);
+          }
+          buf.text = "";
+        }
+      }
       if (e.key === "F2") { e.preventDefault(); validateSale(); }
       if (e.key === "F4") { e.preventDefault(); readScale(); }
-      if (e.key === "Escape" && receipt) { setReceipt(null); codeRef.current?.focus(); }
+      if (e.key === "Escape" && receipt) { setReceipt(null); focusCode(); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -227,13 +292,18 @@ export default function CajaPage() {
         {/* Columna de carga */}
         <section className="panel">
           <h2>Cargar producto</h2>
+          {hasSerial === false && (
+            <button className="primary big" onClick={() => setScanning(true)} style={{ marginBottom: 14 }}>
+              📷 Escanear producto
+            </button>
+          )}
           {message && <div className={`msg ${message.type}`}>{message.text}</div>}
 
           <div className="field">
             <label>Código (PLU) o nombre del producto</label>
             <input
               ref={codeRef}
-              autoFocus
+              autoFocus={hasSerial !== false}
               inputMode="numeric"
               value={codeInput}
               onChange={(e) => { setCodeInput(e.target.value); setProduct(null); setResults([]); }}
@@ -265,7 +335,7 @@ export default function CajaPage() {
                 onKeyDown={(e) => e.key === "Enter" && handleQty()}
                 placeholder={isUnit ? "Ej: 2" : "Ej: 1,250"}
               />
-              {!isUnit && (
+              {!isUnit && hasSerial && (
                 <button style={{ flex: "0 0 auto" }} onClick={readScale} disabled={!scaleOn}>
                   Leer <span className="kbd">F4</span>
                 </button>
@@ -277,19 +347,21 @@ export default function CajaPage() {
             Agregar al carrito
           </button>
 
-          <hr style={{ border: 0, borderTop: "1px solid var(--line)", margin: "20px 0" }} />
+          {hasSerial && (
+            <>
+              <hr style={{ border: 0, borderTop: "1px solid var(--line)", margin: "20px 0" }} />
 
-          <div className="scale-status">
-            <span className={`dot ${scaleOn ? "on" : ""}`} />
-            <span style={{ flex: 1 }}>Balanza {scaleOn ? "conectada" : "desconectada"}</span>
-            <button onClick={toggleScale} disabled={!scaleOn && typeof window !== "undefined" && !isSerialSupported()}>
-              {scaleOn ? "Desconectar" : "Conectar"}
-            </button>
-          </div>
-          {lastRaw && <p className="muted">Última trama: <code>{JSON.stringify(lastRaw)}</code></p>}
-          <p className="muted">
-            Enter para avanzar · <span className="kbd">F2</span> validar venta
-          </p>
+              <div className="scale-status">
+                <span className={`dot ${scaleOn ? "on" : ""}`} />
+                <span style={{ flex: 1 }}>Balanza {scaleOn ? "conectada" : "desconectada"}</span>
+                <button onClick={toggleScale}>{scaleOn ? "Desconectar" : "Conectar"}</button>
+              </div>
+              {lastRaw && <p className="muted">Última trama: <code>{JSON.stringify(lastRaw)}</code></p>}
+              <p className="muted">
+                Enter para avanzar · <span className="kbd">F2</span> validar venta · lector USB: escaneá directo
+              </p>
+            </>
+          )}
         </section>
 
         {/* Carrito */}
@@ -392,11 +464,21 @@ export default function CajaPage() {
               <span>Total a cobrar</span>
               <span>{formatMoney(receipt.total)}</span>
             </div>
-            <button className="primary big" autoFocus onClick={() => { setReceipt(null); codeRef.current?.focus(); }}>
+            <button className="primary big" autoFocus onClick={() => { setReceipt(null); focusCode(); }}>
               Nueva venta
             </button>
           </div>
         </div>
+      )}
+
+      {scanning && (
+        <BarcodeScanner
+          onDetected={(code) => {
+            setScanning(false);
+            void addScanned(code);
+          }}
+          onCancel={() => setScanning(false)}
+        />
       )}
     </>
   );
