@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isPayment, toSaleDTO } from "@/lib/dto";
-import { buildSaleLines } from "@/lib/sales";
+import { applyStock, buildSaleLines } from "@/lib/sales";
 import { handleError, requireUser } from "@/lib/auth";
 import { DATE_RE, rangeAR, todayAR } from "@/lib/dates";
 
@@ -77,9 +77,13 @@ export async function POST(req: NextRequest) {
 
     const { lines, total } = await buildSaleLines(body?.items);
 
-    const sale = await prisma.sale.create({
-      data: { total, paymentMethod, userId: me.id, items: { create: lines } },
-      include: { items: true, user: { select: { name: true } } },
+    const sale = await prisma.$transaction(async (tx) => {
+      const created = await tx.sale.create({
+        data: { total, paymentMethod, userId: me.id, items: { create: lines } },
+        include: { items: true, user: { select: { name: true } } },
+      });
+      await applyStock(tx, lines, -1);
+      return created;
     });
 
     return NextResponse.json(toSaleDTO(sale), { status: 201 });

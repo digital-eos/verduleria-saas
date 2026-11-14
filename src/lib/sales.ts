@@ -106,6 +106,34 @@ export async function buildSaleLines(rawItems: unknown): Promise<{ lines: SaleLi
   return { lines, total };
 }
 
+type Tx = Prisma.TransactionClient;
+
+/**
+ * Mueve la "Cantidad ingresada" de los productos de una venta:
+ * `-1` al vender / restaurar, `+1` al anular (devuelve lo vendido).
+ * Solo toca productos que tienen cantidad cargada (quantityIn null = sin control de stock)
+ * y los montos libres no tienen producto. El decremento es atómico en la base, así que dos
+ * cajas vendiendo a la vez no se pisan. Puede quedar negativo: la venta nunca se bloquea.
+ */
+export async function applyStock(
+  tx: Tx,
+  items: { productId: number | null; quantity: Prisma.Decimal | Prisma.Decimal.Value }[],
+  sign: 1 | -1,
+) {
+  const byProduct = new Map<number, Prisma.Decimal>();
+  for (const it of items) {
+    if (it.productId == null) continue;
+    const prev = byProduct.get(it.productId) ?? new Prisma.Decimal(0);
+    byProduct.set(it.productId, prev.plus(new Prisma.Decimal(it.quantity)));
+  }
+  for (const [id, qty] of byProduct) {
+    await tx.product.updateMany({
+      where: { id, quantityIn: { not: null } },
+      data: { quantityIn: sign === 1 ? { increment: qty } : { decrement: qty } },
+    });
+  }
+}
+
 export const linesToJSON = (lines: SaleLine[]): SaleLineJSON[] =>
   lines.map((l) => ({
     ...l,
@@ -125,8 +153,8 @@ export const linesFromJSON = (lines: SaleLineJSON[]): SaleLine[] =>
 /**
  * Anula (CANCELLED) o restaura (COMPLETED) una venta y lo deja en auditoría.
  * Es la ÚNICA lógica de anulación: la usan el admin (PATCH /api/sales/:id) y el reembolso
- * de Mercado Pago. Hoy no hay stock ni caja que revertir: solo cambia el estado.
- * Idempotente: si la venta ya estaba en ese estado no hace nada y devuelve false.
+ * de Mercado Pago. Anular devuelve la cantidad vendida al stock; restaurar la vuelve a descontar.
+ * Idempotente: si la venta ya estaba en ese estado no hace nada (ni toca el stock) y devuelve false.
  */
 export async function setSaleStatus(
   saleId: number,
@@ -136,8 +164,15 @@ export async function setSaleStatus(
 ): Promise<boolean> {
   const before = await prisma.sale.findUnique({ where: { id: saleId } });
   if (!before) throw new HttpError(404, "Venta no encontrada");
-  const changed = await prisma.sale.updateMany({ where: { id: saleId, status: { not: status } }, data: { status } });
-  if (changed.count === 0) return false;
+  const changed = await prisma.$transaction(async (tx) => {
+    const res = await tx.sale.updateMany({ where: { id: saleId, status: { not: status } }, data: { status } });
+    if (res.count > 0) {
+      const items = await tx.saleItem.findMany({ where: { saleId }, select: { productId: true, quantity: true } });
+      await applyStock(tx, items, status === "CANCELLED" ? 1 : -1);
+    }
+    return res.count;
+  });
+  if (changed === 0) return false;
   await audit(
     actor,
     status === "CANCELLED" ? "SALE_CANCEL" : "SALE_RESTORE",

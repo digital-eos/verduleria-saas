@@ -192,7 +192,9 @@ export default function StockPage() {
                 <td>{p.name}</td>
                 <td><span className="badge">{p.unit === "KG" ? "Por kilo" : "Por unidad"}</span></td>
                 <td className="num">{formatUnitPrice(p.price, p.unit)}</td>
-                <td className="num">{p.quantityIn === null ? <span className="muted">—</span> : formatQty(p.quantityIn, p.unit)}</td>
+                <td className="num" style={p.quantityIn !== null && p.quantityIn < 0 ? { color: "var(--red)" } : undefined}>
+                  {p.quantityIn === null ? <span className="muted">—</span> : formatQty(p.quantityIn, p.unit)}
+                </td>
                 <td className="num" style={{ whiteSpace: "nowrap" }}>
                   <button
                     onClick={() => setForm(toForm(p))}

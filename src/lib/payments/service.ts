@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { HttpError, type AuthUser } from "@/lib/auth";
 import { formatQty } from "@/lib/format";
 import { toSaleDTO, type SaleDTO } from "@/lib/dto";
-import { buildSaleLines, linesFromJSON, linesToJSON, setSaleStatus, type SaleLineJSON } from "@/lib/sales";
+import { applyStock, buildSaleLines, linesFromJSON, linesToJSON, setSaleStatus, type SaleLineJSON } from "@/lib/sales";
 import { merchantIdFor } from "@/lib/merchant";
 import {
   MockMercadoPagoProvider,
@@ -169,6 +169,7 @@ async function finalizePaidOrder(row: PaymentOrder) {
         data: { saleId: sale.id, status: "processed" },
       });
       if (claimed.count === 0) throw new AlreadyFinalized(); // otro proceso ya la registró → rollback
+      await applyStock(tx, lines, -1);
     });
   } catch (e) {
     if (!(e instanceof AlreadyFinalized)) throw e;
