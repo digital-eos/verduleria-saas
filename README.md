@@ -11,7 +11,8 @@ medio de pago opcional y registro de ventas con fecha.
 | Ruta         | Rol | Qué hace |
 |--------------|-----|----------|
 | `/login`     | —   | Ingreso. En el primer uso permite crear el administrador. |
-| `/`          | Todos | **Caja**: código o nombre → peso (o cantidad) → carrito → medio de pago (opcional) → *Validar venta* (F2). |
+| `/`          | —   | Página de presentación pública, con acceso a usuarios arriba a la derecha. |
+| `/caja`      | Todos | **Caja**: código o nombre → peso (o cantidad) → carrito → medio de pago (opcional) → *Validar venta* (F2). |
 | `/ventas`    | Todos | Ventas del día (el admin puede elegir cualquier día), detalle, medio de pago, CSV. Solo el admin anula. |
 | `/dashboard` | Admin | Reportes por rango: facturación por día y por hora, ranking de productos, medio de pago, cajero. |
 | `/productos` | Admin | Alta, edición, desactivación de productos (código PLU, nombre, por kilo / por unidad, precio). |

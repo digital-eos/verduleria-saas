@@ -33,7 +33,7 @@ export default function LoginPage() {
       if (!res.ok) throw new Error(data.error ?? "No se pudo ingresar");
       const next = new URLSearchParams(window.location.search).get("next");
       // recarga completa para que el layout lea la nueva sesión
-      window.location.href = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+      window.location.href = next && next.startsWith("/") && !next.startsWith("//") ? next : "/caja";
     } catch (e) {
       setError((e as Error).message);
       setLoading(false);

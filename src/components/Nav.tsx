@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useSession } from "./SessionProvider";
 
 const links = [
-  { href: "/", label: "Caja", admin: false },
+  { href: "/caja", label: "Caja", admin: false },
   { href: "/precios", label: "Precios", admin: false },
   { href: "/ventas", label: "Ventas", admin: false },
   { href: "/dashboard", label: "Reportes", admin: true },
@@ -18,7 +18,7 @@ const links = [
 export default function Nav() {
   const path = usePathname();
   const session = useSession();
-  if (path === "/login" || !session) return null;
+  if (path === "/" || path === "/login" || !session) return null;
 
   const isAdmin = session.role === "ADMIN";
 

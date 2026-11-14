@@ -6,7 +6,7 @@ import { SESSION_COOKIE, verifySession } from "@/lib/session";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Verdulería — Caja",
+  title: "Verdulería — Caja con balanza",
   description: "Punto de venta con balanza para verdulería",
 };
 
