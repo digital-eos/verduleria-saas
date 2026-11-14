@@ -91,6 +91,9 @@ tr.cancelled td { color: var(--muted); text-decoration: line-through; }
 }
 .modal { background: #fff; border-radius: var(--radius); padding: 24px; width: min(440px, 92vw); }
 .pay-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.pay-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.pay-grid button { padding: 14px 10px; font-size: 16px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.pay-grid .kbd { color: #333; }
 .pay-options button { padding: 8px 12px; border: 1px solid var(--line); background: #fff; }
 .pay-options button.selected { background: var(--green); border-color: var(--green); color: #fff; }
 .qty-btn { padding: 2px 9px; margin: 0 6px; }

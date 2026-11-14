@@ -12,7 +12,7 @@ medio de pago opcional y registro de ventas con fecha.
 |--------------|-----|----------|
 | `/login`     | —   | Ingreso. En el primer uso permite crear el administrador. |
 | `/`          | —   | Página de presentación pública, con acceso a usuarios arriba a la derecha. |
-| `/caja`      | Todos | **Caja** (cobrar): balanza, escáner o código/nombre → peso (o cantidad) → ticket → medio de pago (opcional) → *Cobrar* (F2). |
+| `/caja`      | Todos | **Caja** (cobrar): balanza, escáner o código/nombre → peso (o cantidad) → ticket → un toque en el medio de pago (Efectivo, Débito, Mercado Pago…) cobra directo (F2 = efectivo). |
 | `/ventas`    | Todos | Ventas del día (el admin puede elegir cualquier día), detalle, medio de pago, CSV. Solo el admin anula. Pestaña **Reporte** (admin, `/ventas?vista=reporte`): por rango, facturación por día y por hora, ranking de productos, medio de pago, cajero. `/dashboard` redirige acá. |
 | `/productos` | Admin | Alta, edición, desactivación de productos (código PLU, nombre, por kilo / por unidad, precio). |
 | `/usuarios`  | Admin | Alta de usuarios, rol (Admin / Cajero), reseteo de clave, desactivar. |
@@ -63,7 +63,7 @@ medio de pago opcional y registro de ventas con fecha.
 
 ## Cobro con QR de Mercado Pago
 
-En la caja, elegí **Mercado Pago** como medio de pago y tocá **Cobrar con QR (F2)**: aparece un QR dinámico
+En la caja, tocá **Mercado Pago (QR)**: aparece un QR dinámico
 por el total del ticket, válido 16 minutos. La caja consulta el estado cada 3 s; cuando el pago queda
 aprobado (`processed`) se registra la venta sola, con medio de pago *Mercado Pago*.
 
@@ -127,4 +127,4 @@ y `NEXT_PUBLIC_EAN_DECIMALS` (verificar con una etiqueta de peso conocido).
 
 ## Atajos de teclado (Caja)
 
-`Enter` avanzar · `F4` leer balanza · `F2` cobrar · `Esc` cerrar ticket
+`Enter` avanzar · `F4` leer balanza · `F2` cobrar en efectivo · `Esc` cerrar ticket

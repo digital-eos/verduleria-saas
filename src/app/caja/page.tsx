@@ -53,7 +53,6 @@ export default function CajaPage() {
   const [qtyInput, setQtyInput] = useState("");
   const [product, setProduct] = useState<ProductDTO | null>(null);
   const [results, setResults] = useState<ProductDTO[]>([]);
-  const [payment, setPayment] = useState<Payment | null>(null);
   const [message, setMessage] = useState<{ type: "error" | "ok" | "info"; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [receipt, setReceipt] = useState<SaleDTO | null>(null);
@@ -101,8 +100,7 @@ export default function CajaPage() {
   }, [cart]);
 
   // Búsqueda automática mientras se tipea (con un pequeño retardo).
-  // PLU → muestra el producto; texto → lista de coincidencias. No mueve el foco:
-  // Enter confirma y pasa a la cantidad.
+  // PLU encontrado → pasa solo al campo cantidad/peso; texto → lista de coincidencias.
   useEffect(() => {
     const raw = codeInput.trim();
     if (!raw || product?.code === raw) return;
@@ -120,10 +118,10 @@ export default function CajaPage() {
         } else {
           const res = await apiFetch(`/api/products/by-code/${encodeURIComponent(normalizeCode(raw))}`);
           if (cancelled) return;
-          if (res.ok) setProduct((await res.json()) as ProductDTO);
+          if (res.ok) await selectProduct((await res.json()) as ProductDTO);
         }
       } catch {}
-    }, 250);
+    }, hasLetters ? 250 : 400);
     return () => { cancelled = true; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [codeInput]);
@@ -285,6 +283,8 @@ export default function CajaPage() {
       return;
     }
     addLine(product, q);
+    // Carga manual: siempre volvemos al código para el próximo producto (también en móvil)
+    setTimeout(() => codeRef.current?.focus());
   }
 
   function changeUnitQty(key: string, delta: number) {
@@ -334,7 +334,8 @@ export default function CajaPage() {
     } catch {}
   };
 
-  async function validateSale() {
+  /** Cobra el ticket con el medio de pago elegido (un toque = venta registrada) */
+  async function validateSale(payment: Payment) {
     if (cart.length === 0 || total <= 0 || saving || qr) return;
     // Mercado Pago → cobro con QR. La venta se registra sola cuando el pago queda aprobado.
     if (payment === "MERCADOPAGO") {
@@ -358,7 +359,6 @@ export default function CajaPage() {
       setReceipt(data);
       setCart([]);
       setMessage(null);
-      setPayment(null);
     } catch (e) {
       setMessage({ type: "error", text: (e as Error).message });
     } finally {
@@ -366,7 +366,7 @@ export default function CajaPage() {
     }
   }
 
-  // Atajos: F2 = cobrar, F4 = leer balanza, Esc = cerrar ticket.
+  // Atajos: F2 = cobrar en efectivo, F4 = leer balanza, Esc = cerrar ticket.
   // Además escucha el lector USB cuando el foco NO está en un campo
   // (el lector "tipea" muy rápido y termina con Enter).
   useEffect(() => {
@@ -388,7 +388,7 @@ export default function CajaPage() {
           buf.text = "";
         }
       }
-      if (e.key === "F2") { e.preventDefault(); validateSale(); }
+      if (e.key === "F2") { e.preventDefault(); validateSale("CASH"); }
       if (e.key === "F4") { e.preventDefault(); readScale(); }
       if (e.key === "Escape" && receipt) { setReceipt(null); focusCode(); }
     };
@@ -516,7 +516,7 @@ export default function CajaPage() {
               </div>
               {lastRaw && <p className="muted">Última trama: <code>{JSON.stringify(lastRaw)}</code></p>}
               <p className="muted">
-                Enter para avanzar · <span className="kbd">F2</span> cobrar · lector USB: escaneá directo
+                Enter para avanzar · <span className="kbd">F2</span> cobrar en efectivo · lector USB: escaneá directo
               </p>
             </>
           )}
@@ -572,33 +572,26 @@ export default function CajaPage() {
           </div>
 
           <div className="field">
-            <label>Medio de pago (opcional)</label>
-            <div className="pay-options">
+            <label>{saving ? "Guardando…" : "Cobrar con"}</label>
+            <div className="pay-grid">
               {PAYMENT_METHODS.map((m) => (
                 <button
                   key={m}
                   type="button"
-                  className={payment === m ? "selected" : ""}
-                  onClick={() => setPayment(payment === m ? null : m)}
+                  className={`primary${m === "MERCADOPAGO" ? " mp-btn" : ""}`}
+                  onClick={() => validateSale(m)}
+                  disabled={cart.length === 0 || total <= 0 || saving}
                 >
-                  {PAYMENT_LABELS[m]}
+                  {m === "MERCADOPAGO" ? "Mercado Pago (QR)" : PAYMENT_LABELS[m]}
+                  {m === "CASH" && hasSerial && <span className="kbd">F2</span>}
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="row">
-            <button onClick={() => setCart([])} disabled={cart.length === 0} style={{ flex: "0 0 auto" }}>
-              Vaciar
-            </button>
-            <button
-              className={`primary big${payment === "MERCADOPAGO" ? " mp-btn" : ""}`}
-              onClick={validateSale}
-              disabled={cart.length === 0 || total <= 0 || saving}
-            >
-              {saving ? "Guardando…" : payment === "MERCADOPAGO" ? "Cobrar con QR (F2)" : "Cobrar (F2)"}
-            </button>
-          </div>
+          <button onClick={() => setCart([])} disabled={cart.length === 0}>
+            Vaciar ticket
+          </button>
         </section>
       </div>
 
@@ -643,7 +636,6 @@ export default function CajaPage() {
           onPaid={() => {
             // La venta ya quedó registrada en el servidor: se vacía el ticket
             setCart([]);
-            setPayment(null);
           }}
           onClose={() => {
             rememberQr(null);
