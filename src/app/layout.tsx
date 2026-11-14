@@ -6,8 +6,8 @@ import { SESSION_COOKIE, verifySession } from "@/lib/session";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Verdulería — Caja con balanza",
-  description: "Punto de venta con balanza para verdulería",
+  title: "Libretita — La caja de tu negocio",
+  description: "Chau cuaderno, hola Libretita. Punto de venta simple para negocios de barrio.",
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

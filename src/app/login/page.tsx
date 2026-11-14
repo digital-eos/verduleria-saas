@@ -45,7 +45,7 @@ export default function LoginPage() {
   return (
     <div className="login-wrap">
       <form className="panel login-card" onSubmit={submit}>
-        <h1>🥬 Verdulería</h1>
+        <h1>📒 Libretita</h1>
         {needsSetup ? (
           <p className="muted">
             Primer uso: creá el usuario <b>administrador</b>. Después vas a poder crear los usuarios de los cajeros.

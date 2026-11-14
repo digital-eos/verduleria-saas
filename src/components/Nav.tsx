@@ -29,7 +29,7 @@ export default function Nav() {
 
   return (
     <header className="topbar">
-      <span className="brand">🥬 Verdulería</span>
+      <span className="brand">📒 Libretita</span>
       <nav>
         {links
           .filter((l) => isAdmin || !l.admin)

@@ -41,7 +41,7 @@ export default async function HomePage() {
   return (
     <div className="landing">
       <header className="landing-head">
-        <span className="landing-brand">🥬 Verdulería</span>
+        <span className="landing-brand">📒 Libretita</span>
         {session ? (
           <div className="landing-user">
             <span className="muted">Hola, {session.name}</span>
@@ -53,10 +53,10 @@ export default async function HomePage() {
       </header>
 
       <section className="hero">
-        <h1>La caja de tu verdulería, simple y conectada a la balanza</h1>
+        <h1>Chau cuaderno, hola Libretita</h1>
         <p>
           Cobrá más rápido, controlá precios y mirá cómo va el negocio desde un solo lugar.
-          Pensado para el mostrador, por kilo y por unidad.
+          Pensado para almacenes, kioscos, verdulerías y todo negocio de barrio.
         </p>
         <Link href={session ? "/caja" : "/login"} className="btn-link primary big-link">
           {session ? "Ir a la caja" : "Ingresar al sistema"}
@@ -73,7 +73,7 @@ export default async function HomePage() {
         ))}
       </section>
 
-      <footer className="landing-foot muted">© {new Date().getFullYear()} Verdulería · Punto de venta</footer>
+      <footer className="landing-foot muted">© {new Date().getFullYear()} Libretita · Punto de venta</footer>
     </div>
   );
 }

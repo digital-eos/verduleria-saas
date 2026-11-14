@@ -1,6 +1,6 @@
-# 🥬 Verdulería SaaS — Caja con balanza
+# 📒 Libretita — Chau cuaderno, hola Libretita
 
-Punto de venta web para verdulería: catálogo de productos vendidos **por kilo o por unidad**,
+Punto de venta web para negocios de barrio (almacenes, kioscos, verdulerías…): catálogo de productos vendidos **por kilo o por unidad**,
 carga por código + peso/cantidad (manual o leyendo la balanza), validación del carrito,
 medio de pago opcional y registro de ventas con fecha.
 
