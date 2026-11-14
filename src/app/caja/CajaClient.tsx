@@ -9,6 +9,7 @@ import Link from "next/link";
 import { apiFetch, useIsAdmin } from "@/components/SessionProvider";
 import BarcodeScanner from "@/components/BarcodeScanner";
 import MercadoPagoQrModal from "@/components/MercadoPagoQrModal";
+import QuickProductModal from "@/components/QuickProductModal";
 
 type CartLine = {
   key: string;
@@ -101,6 +102,8 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
   const [missingCode, setMissingCode] = useState<string | null>(null);
   const [priceInput, setPriceInput] = useState<string | null>(null); // null = no editando
   const [savingPrice, setSavingPrice] = useState(false);
+  // Código inexistente: paréntesis para darlo de alta (o venderlo sin registrar) y volver a la venta
+  const [quickAdd, setQuickAdd] = useState<{ code: string; from: "scan" | "code" } | null>(null);
 
   const scaleRef = useRef<SystelScale | null>(null);
   const [scaleOn, setScaleOn] = useState(false);
@@ -159,6 +162,11 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
     amountRef.current?.focus();
   }
 
+  function pushFree(price: number) {
+    setCart((c) => [...c, { key: crypto.randomUUID(), code: "S/C", name: FREE_NAME, unit: "UNIT", price, quantity: 1, free: true }]);
+    setMessage({ type: "ok", text: `+ ${FREE_NAME} · ${formatMoney(price)}` });
+  }
+
   /** Modo Precio: agrega el monto como "Producto no registrado" */
   function addFree() {
     const price = parsePrice(amountInput);
@@ -167,10 +175,25 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
       amountRef.current?.focus();
       return;
     }
-    setCart((c) => [...c, { key: crypto.randomUUID(), code: "S/C", name: FREE_NAME, unit: "UNIT", price, quantity: 1, free: true }]);
-    setMessage({ type: "ok", text: `+ ${FREE_NAME} · ${formatMoney(price)}` });
+    pushFree(price);
     setAmountInput("");
     amountRef.current?.focus();
+  }
+
+  /** Cierra el paréntesis de alta y retoma la venta */
+  function closeQuickAdd() {
+    setQuickAdd(null);
+    setTimeout(() => focusCode());
+  }
+
+  /** Producto recién creado desde la caja: va directo al ticket (por kilo pide el peso) */
+  async function onQuickCreated(p: ProductDTO) {
+    const from = quickAdd?.from;
+    setQuickAdd(null);
+    setMissingCode(null);
+    if (p.unit === "UNIT" && from === "scan") return addLine(p, 1);
+    if (mode !== "balanza") changeMode("balanza");
+    await selectProduct(p);
   }
 
   // Persistir ticket ante un refresh accidental
@@ -270,7 +293,7 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
       const label = parseScaleLabel(code);
       if (label) return await addFromLabel(label);
       setMissingCode(code);
-      throw new Error(`Producto no cargado (código ${code}). Cargalo en Stock.`);
+      setQuickAdd({ code: normalizeCode(code), from: "scan" });
     } catch (e) {
       setMessage({ type: "error", text: (e as Error).message });
     }
@@ -317,7 +340,8 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
       const res = await apiFetch(`/api/products/by-code/${encodeURIComponent(normalizeCode(raw))}`);
       if (res.status === 404) {
         setMissingCode(raw);
-        throw new Error(`Producto no cargado (código ${raw}).`);
+        setQuickAdd({ code: normalizeCode(raw), from: "code" });
+        return;
       }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "No se pudo buscar el producto");
@@ -464,7 +488,7 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       const inField = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
-      if (qr) return; // con el QR abierto la caja no escucha atajos ni el lector
+      if (qr || quickAdd) return; // con un modal abierto la caja no escucha atajos ni el lector
       if (!inField && !receipt) {
         const now = e.timeStamp;
         const buf = scanBuf.current;
@@ -536,10 +560,15 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
               <p className="muted">
                 Por unidad se suma directo al ticket. Por kilo pasa a Balanza para cargar el peso.
               </p>
-              {isAdmin && missingCode && (
-                <Link href={`/stock?code=${encodeURIComponent(missingCode)}`} style={{ display: "block", marginBottom: 12 }}>
-                  ➕ Cargar el producto {missingCode}
-                </Link>
+              {missingCode && (
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() => setQuickAdd({ code: normalizeCode(missingCode), from: "scan" })}
+                  style={{ display: "block", marginBottom: 12 }}
+                >
+                  ➕ {isAdmin ? "Cargar" : "Vender"} el producto {missingCode}
+                </button>
               )}
             </>
           )}
@@ -603,10 +632,15 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
               ))}
             </div>
           )}
-          {isAdmin && missingCode && !product && (
-            <Link href={`/stock?code=${encodeURIComponent(missingCode)}`} style={{ display: "block", margin: "-6px 0 12px" }}>
-              ➕ Cargar el producto {missingCode}
-            </Link>
+          {missingCode && !product && (
+            <button
+              type="button"
+              className="link-btn"
+              onClick={() => setQuickAdd({ code: normalizeCode(missingCode), from: "code" })}
+              style={{ display: "block", margin: "-6px 0 12px" }}
+            >
+              ➕ {isAdmin ? "Cargar" : "Vender"} el producto {missingCode}
+            </button>
           )}
           <div className="product-hint">
             {product && (
@@ -821,6 +855,21 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
             setQr(null);
             focusCode();
           }}
+        />
+      )}
+
+      {quickAdd && (
+        <QuickProductModal
+          key={quickAdd.code}
+          code={quickAdd.code}
+          isAdmin={isAdmin}
+          freeName={FREE_NAME}
+          onCreated={(p) => void onQuickCreated(p)}
+          onSellFree={(price) => {
+            pushFree(price);
+            closeQuickAdd();
+          }}
+          onCancel={closeQuickAdd}
         />
       )}
 
