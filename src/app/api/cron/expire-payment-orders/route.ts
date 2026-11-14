@@ -18,9 +18,20 @@ function authorized(req: NextRequest): boolean {
 }
 
 /**
- * GET /api/cron/expire-payment-orders — lo llama Vercel Cron (ver vercel.json) con
- * "Authorization: Bearer <CRON_SECRET>". Sincroniza los cobros "created" ya vencidos:
+ * GET /api/cron/expire-payment-orders — con "Authorization: Bearer <CRON_SECRET>".
+ * Sincroniza los cobros "created" ya vencidos:
  * se pagaron → se registra la venta; si no → "expired" (ver syncPaymentOrder).
+ *
+ * DESACTIVADO POR AHORA (se vende solo el producto Balanza, sin cobro con QR).
+ * Para activarlo, crear vercel.json en la raíz con (requiere plan Pro de Vercel):
+ *
+ *   {
+ *     "crons": [
+ *       { "path": "/api/cron/expire-payment-orders", "schedule": "*\/10 * * * *" }
+ *     ]
+ *   }
+ *
+ * y cargar CRON_SECRET en las variables de entorno de Vercel.
  */
 export async function GET(req: NextRequest) {
   if (!process.env.CRON_SECRET?.trim()) {
