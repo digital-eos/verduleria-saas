@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { isPayment, toSaleDTO } from "@/lib/dto";
-import { normalizeCode } from "@/lib/format";
+import { buildSaleLines } from "@/lib/sales";
 import { handleError, requireUser } from "@/lib/auth";
 import { DATE_RE, rangeAR, todayAR } from "@/lib/dates";
 
@@ -68,10 +68,6 @@ export async function POST(req: NextRequest) {
   try {
     const me = await requireUser();
     const body = await req.json().catch(() => null);
-    const rawItems: unknown[] = Array.isArray(body?.items) ? body.items : [];
-    if (rawItems.length === 0) {
-      return NextResponse.json({ error: "El ticket está vacío" }, { status: 400 });
-    }
 
     const pm = body?.paymentMethod;
     if (pm != null && pm !== "" && !isPayment(pm)) {
@@ -79,47 +75,7 @@ export async function POST(req: NextRequest) {
     }
     const paymentMethod = isPayment(pm) ? pm : null;
 
-    const items: { code: string; quantity: number }[] = [];
-    for (const it of rawItems as { code?: unknown; quantity?: unknown }[]) {
-      const code = normalizeCode(String(it?.code ?? ""));
-      const quantity = Number(it?.quantity);
-      if (!code || !Number.isFinite(quantity) || quantity <= 0 || quantity > 1000) {
-        return NextResponse.json({ error: `Línea inválida: ${JSON.stringify(it)}` }, { status: 400 });
-      }
-      items.push({ code, quantity });
-    }
-
-    const codes = [...new Set(items.map((i) => i.code))];
-    const products = await prisma.product.findMany({ where: { code: { in: codes }, active: true } });
-    const byCode = new Map(products.map((p) => [p.code, p]));
-    const missing = codes.filter((c) => !byCode.has(c));
-    if (missing.length) {
-      return NextResponse.json({ error: `Productos inexistentes: ${missing.join(", ")}` }, { status: 400 });
-    }
-
-    const badUnits = items.filter((i) => byCode.get(i.code)!.unit === "UNIT" && !Number.isInteger(i.quantity));
-    if (badUnits.length) {
-      return NextResponse.json(
-        { error: `Los productos por unidad llevan cantidad entera: ${badUnits.map((i) => i.code).join(", ")}` },
-        { status: 400 },
-      );
-    }
-
-    const lines = items.map(({ code, quantity }) => {
-      const p = byCode.get(code)!;
-      const qty = new Prisma.Decimal(quantity.toFixed(3));
-      const subtotal = p.price.times(qty).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
-      return {
-        productId: p.id,
-        productCode: p.code,
-        productName: p.name,
-        unit: p.unit,
-        unitPrice: p.price,
-        quantity: qty,
-        subtotal,
-      };
-    });
-    const total = lines.reduce((acc, l) => acc.plus(l.subtotal), new Prisma.Decimal(0));
+    const { lines, total } = await buildSaleLines(body?.items);
 
     const sale = await prisma.sale.create({
       data: { total, paymentMethod, userId: me.id, items: { create: lines } },

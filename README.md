@@ -13,8 +13,7 @@ medio de pago opcional y registro de ventas con fecha.
 | `/login`     | —   | Ingreso. En el primer uso permite crear el administrador. |
 | `/`          | —   | Página de presentación pública, con acceso a usuarios arriba a la derecha. |
 | `/caja`      | Todos | **Caja** (cobrar): balanza, escáner o código/nombre → peso (o cantidad) → ticket → medio de pago (opcional) → *Cobrar* (F2). |
-| `/ventas`    | Todos | Ventas del día (el admin puede elegir cualquier día), detalle, medio de pago, CSV. Solo el admin anula. |
-| `/dashboard` | Admin | Reportes por rango: facturación por día y por hora, ranking de productos, medio de pago, cajero. |
+| `/ventas`    | Todos | Ventas del día (el admin puede elegir cualquier día), detalle, medio de pago, CSV. Solo el admin anula. Pestaña **Reporte** (admin, `/ventas?vista=reporte`): por rango, facturación por día y por hora, ranking de productos, medio de pago, cajero. `/dashboard` redirige acá. |
 | `/productos` | Admin | Alta, edición, desactivación de productos (código PLU, nombre, por kilo / por unidad, precio). |
 | `/usuarios`  | Admin | Alta de usuarios, rol (Admin / Cajero), reseteo de clave, desactivar. |
 | `/auditoria` | Admin | Registro de ingresos, cambios de precio, anulaciones, cambios de usuarios… |
@@ -44,6 +43,11 @@ medio de pago opcional y registro de ventas con fecha.
 | GET | `/api/reports?from=&to=` | Reportes (admin) |
 | GET | `/api/audit?from=&to=&action=` | Auditoría (admin) |
 | PATCH | `/api/sales/:id` | `{ status: "CANCELLED" }` para anular · `{ paymentMethod }` para corregir el medio de pago |
+| POST | `/api/payments/orders` | `{ items: [{ code, quantity }] }` → crea un cobro con QR (Mercado Pago). Devuelve `orderId`, `qrData`, `expiresAt`. |
+| GET | `/api/payments/orders/:orderId` | Estado del cobro (la caja lo consulta cada 3 s). Si está pagado, registra la venta. |
+| POST | `/api/payments/orders/:orderId/cancel` | Cancela el cobro |
+| POST | `/api/payments/orders/:orderId/simulate` | **Solo modo demo**: simula el pago |
+| POST | `/api/webhooks/mercadopago` | Notificaciones de Mercado Pago (pública, validada con firma) |
 
 > El precio **siempre** se toma de la base al validar (no del navegador), y cada línea guarda una
 > copia del nombre y precio del momento: si mañana cambiás el precio, el histórico no cambia.
@@ -55,6 +59,22 @@ medio de pago opcional y registro de ventas con fecha.
 - `Product` (id, code único, name, unit `KG`/`UNIT`, price, active, fechas)
 - `Sale` (id, createdAt, total, status, paymentMethod opcional, userId = cajero)
 - `SaleItem` (saleId, productId, productCode, productName, unit, unitPrice, quantity, subtotal)
+- `payment_orders` (id, sale_id, provider `mock`/`mercadopago`, mp_order_id, total_amount, qr_data, status, expires_at, items, fechas)
+
+## Cobro con QR de Mercado Pago
+
+En la caja, elegí **Mercado Pago** como medio de pago y tocá **Cobrar con QR (F2)**: aparece un QR dinámico
+por el total del ticket, válido 16 minutos. La caja consulta el estado cada 3 s; cuando el pago queda
+aprobado (`processed`) se registra la venta sola, con medio de pago *Mercado Pago*.
+
+- **Modo demo** (`PAYMENT_PROVIDER=mock`, por defecto): no se cobra nada. El modal muestra *MODO DEMO* y un
+  botón *Simular pago (demo)*. Con `MOCK_AUTO_APPROVE_SECONDS=8` se aprueba solo a los 8 s.
+- **Producción**: `PAYMENT_PROVIDER=mercadopago` + `MP_ACCESS_TOKEN`, `MP_EXTERNAL_POS_ID`, `MP_WEBHOOK_SECRET`.
+  Además, en Mercado Pago: crear la sucursal y la caja (POS) y configurar el webhook de **Order** apuntando a
+  `https://<tu-dominio>/api/webhooks/mercadopago`. Nada más cambia: la interfaz es la misma.
+
+Toda la comunicación con Mercado Pago pasa por el servidor (`src/lib/payments/`): el access token nunca
+llega al navegador. Los puntos a revisar al conectar la API real están marcados con `// TODO MP:`.
 
 Medios de pago: Efectivo, Débito, Crédito, Transferencia, Mercado Pago, Otro (o ninguno).
 

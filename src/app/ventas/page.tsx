@@ -4,6 +4,7 @@ import { Fragment, useEffect, useState } from "react";
 import { PAYMENT_LABELS, PAYMENT_METHODS, type Payment, type SaleDTO } from "@/lib/dto";
 import { formatDateTime, formatKg, formatMoney, formatQty, formatUnitPrice } from "@/lib/format";
 import { apiFetch, useIsAdmin } from "@/components/SessionProvider";
+import SalesReport from "@/components/SalesReport";
 
 type Summary = {
   date: string;
@@ -18,8 +19,44 @@ type Summary = {
 const todayAR = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
 const paymentLabel = (k: string) => (k === "NONE" ? "Sin especificar" : PAYMENT_LABELS[k as Payment] ?? k);
 
+type View = "dia" | "reporte";
+
 export default function VentasPage() {
   const isAdmin = useIsAdmin();
+  const [view, setView] = useState<View>("dia");
+
+  // La pestaña se refleja en la URL (?vista=reporte) para poder volver o compartir el link
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("vista") === "reporte") setView("reporte");
+  }, []);
+
+  function changeView(v: View) {
+    setView(v);
+    const url = new URL(window.location.href);
+    if (v === "reporte") url.searchParams.set("vista", "reporte");
+    else url.searchParams.delete("vista");
+    window.history.replaceState(null, "", url);
+  }
+
+  if (!isAdmin) return <DailySales isAdmin={false} />;
+
+  return (
+    <>
+      <h1 style={{ marginBottom: 8 }}>Ventas</h1>
+      <div className="tabs" role="tablist">
+        <button role="tab" aria-selected={view === "dia"} className={view === "dia" ? "active" : ""} onClick={() => changeView("dia")}>
+          Del día
+        </button>
+        <button role="tab" aria-selected={view === "reporte"} className={view === "reporte" ? "active" : ""} onClick={() => changeView("reporte")}>
+          Reporte
+        </button>
+      </div>
+      {view === "reporte" ? <SalesReport /> : <DailySales isAdmin />}
+    </>
+  );
+}
+
+function DailySales({ isAdmin }: { isAdmin: boolean }) {
   const [date, setDate] = useState(todayAR());
   const [data, setData] = useState<Summary | null>(null);
   const [open, setOpen] = useState<number | null>(null);

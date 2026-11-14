@@ -9,7 +9,7 @@ datasource db {
 }
 
 enum Role {
-  ADMIN   // Dueño: todo
+  ADMIN // Dueño: todo
   CASHIER // Cajero: caja y ventas del día
 }
 
@@ -54,12 +54,12 @@ enum SaleUnit {
 }
 
 enum PaymentMethod {
-  CASH        // Efectivo
-  DEBIT       // Débito
-  CREDIT      // Crédito
-  TRANSFER    // Transferencia
+  CASH // Efectivo
+  DEBIT // Débito
+  CREDIT // Crédito
+  TRANSFER // Transferencia
   MERCADOPAGO // Mercado Pago / QR
-  OTHER       // Otro
+  OTHER // Otro
 }
 
 /// Catálogo de productos. `code` es el PLU (el mismo número que tiene cargado la balanza).
@@ -86,6 +86,7 @@ model Sale {
   userId        Int?
   user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   items         SaleItem[]
+  paymentOrder  PaymentOrder?
 
   @@index([createdAt])
 }
@@ -108,4 +109,28 @@ model SaleItem {
 
   @@index([saleId])
   @@index([productId])
+}
+
+/// Cobro con QR (Mercado Pago, API de Orders). La venta (`Sale`) se crea recién cuando el pago
+/// queda aprobado ("processed"); hasta entonces el ticket se guarda como foto en `items`.
+/// `provider`: "mock" (modo demo) | "mercadopago".
+/// `status`: "created" | "processed" | "expired" | "canceled" | "refunded" (mismos valores que MP).
+model PaymentOrder {
+  id          String    @id @default(cuid())
+  saleId      Int?      @unique @map("sale_id")
+  sale        Sale?     @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  provider    String
+  mpOrderId   String?   @unique @map("mp_order_id")
+  totalAmount Decimal   @map("total_amount") @db.Decimal(12, 2)
+  qrData      String?   @map("qr_data")
+  status      String    @default("created")
+  expiresAt   DateTime? @map("expires_at")
+  /// Líneas del ticket ya validadas por el servidor (para crear la venta al aprobarse el pago)
+  items       Json
+  userId      Int?      @map("user_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("payment_orders")
 }

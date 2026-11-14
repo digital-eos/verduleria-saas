@@ -37,7 +37,7 @@ export default function ProductosPage() {
     }
   }
 
-  // Viene de /precios?code=... ("Cargar este producto ahora")
+  // Viene de la Caja: /productos?code=... ("Cargar el producto")
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get("code");
     if (code) void loadScanned(code);

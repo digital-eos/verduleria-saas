@@ -6,9 +6,7 @@ import { useSession } from "./SessionProvider";
 
 const links = [
   { href: "/caja", label: "Caja", admin: false },
-  { href: "/precios", label: "Precios", admin: false },
   { href: "/ventas", label: "Ventas", admin: false },
-  { href: "/dashboard", label: "Reportes", admin: true },
   { href: "/productos", label: "Productos", admin: true },
   { href: "/usuarios", label: "Usuarios", admin: true },
   { href: "/auditoria", label: "Auditoría", admin: true },

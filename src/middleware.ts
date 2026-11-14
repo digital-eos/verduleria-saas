@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
 
 const PUBLIC_EXACT = ["/"];
-const PUBLIC = ["/login", "/api/auth/login", "/api/auth/setup"];
+// /api/webhooks: los llama Mercado Pago (sin sesión); se validan con firma
+const PUBLIC = ["/login", "/api/auth/login", "/api/auth/setup", "/api/webhooks"];
 const ADMIN_PAGES = ["/productos", "/usuarios", "/auditoria", "/dashboard", "/configuracion"];
 
 const matches = (path: string, list: string[]) => list.some((p) => path === p || path.startsWith(p + "/"));

@@ -2,7 +2,7 @@ import Link from "next/link";
 
 /**
  * Ajustes técnicos del comercio (solo admin).
- * Lo del día a día (cobrar, precios, ventas) queda en el menú principal.
+ * Lo del día a día (cobrar y consultar precios en la Caja, ventas) queda en el menú principal.
  */
 const items = [
   {

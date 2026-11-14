@@ -5,8 +5,10 @@ import { PAYMENT_LABELS, PAYMENT_METHODS, type Payment, type ProductDTO, type Sa
 import { formatMoney, formatQty, formatUnitPrice, normalizeCode, parseWeightInput } from "@/lib/format";
 import { parseScaleLabel } from "@/lib/barcode";
 import { SystelScale, isSerialSupported } from "@/lib/scale";
-import { apiFetch } from "@/components/SessionProvider";
+import Link from "next/link";
+import { apiFetch, useIsAdmin } from "@/components/SessionProvider";
 import BarcodeScanner from "@/components/BarcodeScanner";
+import MercadoPagoQrModal from "@/components/MercadoPagoQrModal";
 
 type CartLine = {
   key: string;
@@ -18,6 +20,8 @@ type CartLine = {
 };
 
 const CART_KEY = "verduleria.cart.v2";
+/** Cobro QR en curso: si se recarga la página, se retoma (no se pierde un pago) */
+const QR_ORDER_KEY = "libretita.qrOrder.v1";
 const subtotal = (l: CartLine) => Math.round(l.price * l.quantity * 100) / 100;
 
 async function fetchProduct(code: string): Promise<ProductDTO> {
@@ -25,6 +29,15 @@ async function fetchProduct(code: string): Promise<ProductDTO> {
   const data = await res.json();
   if (!res.ok) throw new Error(data.error ?? "Producto no encontrado");
   return data;
+}
+
+/** Acepta "1500", "1500,50" o "1.500,50" */
+function parsePrice(raw: string): number | null {
+  const s = raw.trim().replace(/\s|\$/g, "");
+  if (!s) return null;
+  const normalized = s.includes(",") ? s.replace(/\./g, "").replace(",", ".") : s;
+  const n = Number(normalized);
+  return Number.isFinite(n) && n > 0 ? n : null;
 }
 
 /** Interpreta lo tipeado en "cantidad" según la unidad del producto */
@@ -44,6 +57,15 @@ export default function CajaPage() {
   const [message, setMessage] = useState<{ type: "error" | "ok" | "info"; text: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [receipt, setReceipt] = useState<SaleDTO | null>(null);
+  // Cobro con QR de Mercado Pago: null = cerrado; resume = orden a retomar
+  const [qr, setQr] = useState<{ resume: string | null } | null>(null);
+
+  // Precios (ex módulo "Precios"): el admin cambia el precio del producto
+  // encontrado sin salir de la caja, o carga uno que no existe.
+  const isAdmin = useIsAdmin();
+  const [missingCode, setMissingCode] = useState<string | null>(null);
+  const [priceInput, setPriceInput] = useState<string | null>(null); // null = no editando
+  const [savingPrice, setSavingPrice] = useState(false);
 
   const scaleRef = useRef<SystelScale | null>(null);
   const [scaleOn, setScaleOn] = useState(false);
@@ -70,11 +92,41 @@ export default function CajaPage() {
     try {
       const saved = localStorage.getItem(CART_KEY);
       if (saved) setCart(JSON.parse(saved));
+      const pendingQr = localStorage.getItem(QR_ORDER_KEY);
+      if (pendingQr) setQr({ resume: pendingQr });
     } catch {}
   }, []);
   useEffect(() => {
     try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {}
   }, [cart]);
+
+  // Búsqueda automática mientras se tipea (con un pequeño retardo).
+  // PLU → muestra el producto; texto → lista de coincidencias. No mueve el foco:
+  // Enter confirma y pasa a la cantidad.
+  useEffect(() => {
+    const raw = codeInput.trim();
+    if (!raw || product?.code === raw) return;
+    const hasLetters = /[a-záéíóúñ]/i.test(raw);
+    // Códigos de barras largos (lector USB) se resuelven con Enter
+    if (!hasLetters && /^\d{8,}$/.test(raw)) return;
+    if (hasLetters && raw.length < 2) return;
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        if (hasLetters) {
+          const res = await apiFetch(`/api/products?q=${encodeURIComponent(raw)}`);
+          const found: ProductDTO[] = res.ok ? await res.json() : [];
+          if (!cancelled) setResults(found.slice(0, 8));
+        } else {
+          const res = await apiFetch(`/api/products/by-code/${encodeURIComponent(normalizeCode(raw))}`);
+          if (cancelled) return;
+          if (res.ok) setProduct((await res.json()) as ProductDTO);
+        }
+      } catch {}
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codeInput]);
 
   const total = cart.reduce((acc, l) => acc + subtotal(l), 0);
   const isUnit = product?.unit === "UNIT";
@@ -114,6 +166,8 @@ export default function CajaPage() {
     setMessage(null);
     setResults([]);
     setProduct(null);
+    setMissingCode(null);
+    setPriceInput(null);
     setCodeInput("");
     setQtyInput("");
     try {
@@ -127,6 +181,7 @@ export default function CajaPage() {
       if (res.status !== 404) throw new Error("No se pudo buscar el producto");
       const label = parseScaleLabel(code);
       if (label) return await addFromLabel(label);
+      setMissingCode(code);
       throw new Error(`Producto no cargado (código ${code}). Cargalo en Productos.`);
     } catch (e) {
       setMessage({ type: "error", text: (e as Error).message });
@@ -136,6 +191,7 @@ export default function CajaPage() {
   /** Selecciona un producto y pasa al campo cantidad / lee la balanza */
   async function selectProduct(p: ProductDTO) {
     setResults([]);
+    setPriceInput(null);
     setProduct(p);
     setCodeInput(p.code);
     if (p.unit === "UNIT") {
@@ -154,6 +210,9 @@ export default function CajaPage() {
     const raw = codeInput.trim();
     if (!raw) return;
     setMessage(null);
+    // Ya encontrado por la búsqueda automática: confirmar y pasar a la cantidad
+    if (product) return selectProduct(product);
+    if (results.length === 1) return selectProduct(results[0]);
     setResults([]);
     try {
       // Si tiene letras, buscamos por nombre
@@ -167,11 +226,48 @@ export default function CajaPage() {
       }
       // Código de barras (8+ dígitos, típicamente del lector USB): se agrega directo
       if (/^\d{8,}$/.test(raw)) return await addScanned(raw);
-      await selectProduct(await fetchProduct(normalizeCode(raw)));
+      const res = await apiFetch(`/api/products/by-code/${encodeURIComponent(normalizeCode(raw))}`);
+      if (res.status === 404) {
+        setMissingCode(raw);
+        throw new Error(`Producto no cargado (código ${raw}).`);
+      }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "No se pudo buscar el producto");
+      await selectProduct(data as ProductDTO);
     } catch (e) {
       setProduct(null);
       setMessage({ type: "error", text: (e as Error).message });
       codeRef.current?.select();
+    }
+  }
+
+  async function savePrice() {
+    if (!product || priceInput === null) return;
+    const price = parsePrice(priceInput);
+    if (price === null) {
+      setMessage({ type: "error", text: "Precio inválido. Usá por ejemplo 1500 o 1500,50" });
+      return;
+    }
+    setSavingPrice(true);
+    try {
+      const res = await apiFetch(`/api/products/${product.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ price }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? "No se pudo actualizar el precio");
+      const updated = data as ProductDTO;
+      setProduct(updated);
+      // El ticket en curso se cobra al precio actual: lo reflejamos
+      setCart((c) => c.map((l) => (l.code === updated.code ? { ...l, price: updated.price } : l)));
+      setPriceInput(null);
+      setMessage({ type: "ok", text: `Precio de ${updated.name} actualizado: ${formatUnitPrice(updated.price, updated.unit)}` });
+      setTimeout(() => qtyRef.current?.focus());
+    } catch (e) {
+      setMessage({ type: "error", text: (e as Error).message });
+    } finally {
+      setSavingPrice(false);
     }
   }
 
@@ -231,8 +327,21 @@ export default function CajaPage() {
     }
   }
 
+  const rememberQr = (orderId: string | null) => {
+    try {
+      if (orderId) localStorage.setItem(QR_ORDER_KEY, orderId);
+      else localStorage.removeItem(QR_ORDER_KEY);
+    } catch {}
+  };
+
   async function validateSale() {
-    if (cart.length === 0 || saving) return;
+    if (cart.length === 0 || total <= 0 || saving || qr) return;
+    // Mercado Pago → cobro con QR. La venta se registra sola cuando el pago queda aprobado.
+    if (payment === "MERCADOPAGO") {
+      setMessage(null);
+      setQr({ resume: null });
+      return;
+    }
     setSaving(true);
     setMessage(null);
     try {
@@ -264,6 +373,7 @@ export default function CajaPage() {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       const inField = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
+      if (qr) return; // con el QR abierto la caja no escucha atajos ni el lector
       if (!inField && !receipt) {
         const now = e.timeStamp;
         const buf = scanBuf.current;
@@ -306,7 +416,13 @@ export default function CajaPage() {
               autoFocus={hasSerial !== false}
               inputMode="numeric"
               value={codeInput}
-              onChange={(e) => { setCodeInput(e.target.value); setProduct(null); setResults([]); }}
+              onChange={(e) => {
+                setCodeInput(e.target.value);
+                setProduct(null);
+                setResults([]);
+                setMissingCode(null);
+                setPriceInput(null);
+              }}
               onKeyDown={(e) => e.key === "Enter" && handleCode()}
               placeholder="Ej: 1, 0001 o tomate"
             />
@@ -320,9 +436,51 @@ export default function CajaPage() {
               ))}
             </div>
           )}
+          {isAdmin && missingCode && !product && (
+            <Link href={`/productos?code=${encodeURIComponent(missingCode)}`} style={{ display: "block", margin: "-6px 0 12px" }}>
+              ➕ Cargar el producto {missingCode}
+            </Link>
+          )}
           <div className="product-hint">
-            {product ? `${product.name} — ${formatUnitPrice(product.price, product.unit)}` : ""}
+            {product && (
+              <>
+                {product.name} — {formatUnitPrice(product.price, product.unit)}
+                {isAdmin && priceInput === null && (
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => setPriceInput(String(product.price).replace(".", ","))}
+                    style={{ marginLeft: 8, padding: "2px 8px", fontSize: 13 }}
+                  >
+                    Cambiar precio
+                  </button>
+                )}
+              </>
+            )}
           </div>
+          {product && priceInput !== null && (
+            <div className="field">
+              <label>Nuevo precio {product.unit === "KG" ? "por kilo" : "por unidad"} ($)</label>
+              <div className="row">
+                <input
+                  autoFocus
+                  inputMode="decimal"
+                  value={priceInput}
+                  onChange={(e) => setPriceInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void savePrice();
+                    if (e.key === "Escape") setPriceInput(null);
+                  }}
+                />
+                <button className="primary" onClick={savePrice} disabled={savingPrice} style={{ flex: "0 0 auto" }}>
+                  {savingPrice ? "Guardando…" : "Guardar"}
+                </button>
+                <button onClick={() => setPriceInput(null)} disabled={savingPrice} style={{ flex: "0 0 auto" }}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="field">
             <label>{isUnit ? "Cantidad (unidades)" : "Peso (kg)"}</label>
@@ -343,7 +501,7 @@ export default function CajaPage() {
             </div>
           </div>
 
-          <button className="primary big" onClick={product ? handleQty : handleCode}>
+          <button className="primary big" onClick={product && qtyInput.trim() ? handleQty : handleCode}>
             Agregar al ticket
           </button>
 
@@ -433,8 +591,12 @@ export default function CajaPage() {
             <button onClick={() => setCart([])} disabled={cart.length === 0} style={{ flex: "0 0 auto" }}>
               Vaciar
             </button>
-            <button className="primary big" onClick={validateSale} disabled={cart.length === 0 || saving}>
-              {saving ? "Guardando…" : "Cobrar (F2)"}
+            <button
+              className={`primary big${payment === "MERCADOPAGO" ? " mp-btn" : ""}`}
+              onClick={validateSale}
+              disabled={cart.length === 0 || total <= 0 || saving}
+            >
+              {saving ? "Guardando…" : payment === "MERCADOPAGO" ? "Cobrar con QR (F2)" : "Cobrar (F2)"}
             </button>
           </div>
         </section>
@@ -469,6 +631,26 @@ export default function CajaPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {qr && (
+        <MercadoPagoQrModal
+          items={cart.map((l) => ({ code: l.code, quantity: l.quantity }))}
+          estimatedTotal={total}
+          resumeOrderId={qr.resume}
+          onCreated={(id) => rememberQr(id)}
+          onSettled={() => rememberQr(null)}
+          onPaid={() => {
+            // La venta ya quedó registrada en el servidor: se vacía el ticket
+            setCart([]);
+            setPayment(null);
+          }}
+          onClose={() => {
+            rememberQr(null);
+            setQr(null);
+            focusCode();
+          }}
+        />
       )}
 
       {scanning && (
