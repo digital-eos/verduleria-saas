@@ -12,7 +12,7 @@ const links = [
   { href: "/productos", label: "Productos", admin: true },
   { href: "/usuarios", label: "Usuarios", admin: true },
   { href: "/auditoria", label: "Auditoría", admin: true },
-  { href: "/balanza", label: "Balanza", admin: true },
+  { href: "/configuracion", label: "Configuración", admin: true },
 ];
 
 export default function Nav() {
@@ -34,7 +34,7 @@ export default function Nav() {
         {links
           .filter((l) => isAdmin || !l.admin)
           .map((l) => (
-            <Link key={l.href} href={l.href} className={path === l.href ? "active" : ""}>
+            <Link key={l.href} href={l.href} className={path === l.href || path.startsWith(l.href + "/") ? "active" : ""}>
               {l.label}
             </Link>
           ))}

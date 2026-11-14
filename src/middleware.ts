@@ -3,7 +3,7 @@ import { SESSION_COOKIE, verifySession } from "@/lib/session";
 
 const PUBLIC_EXACT = ["/"];
 const PUBLIC = ["/login", "/api/auth/login", "/api/auth/setup"];
-const ADMIN_PAGES = ["/productos", "/usuarios", "/auditoria", "/dashboard", "/balanza"];
+const ADMIN_PAGES = ["/productos", "/usuarios", "/auditoria", "/dashboard", "/configuracion"];
 
 const matches = (path: string, list: string[]) => list.some((p) => path === p || path.startsWith(p + "/"));
 

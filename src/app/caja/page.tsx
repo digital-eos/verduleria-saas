@@ -65,7 +65,7 @@ export default function CajaPage() {
   /** En móvil no enfocamos para no abrir el teclado después de cada escaneo */
   const focusCode = () => { if (hasSerialRef.current) codeRef.current?.focus(); };
 
-  // Persistir carrito ante un refresh accidental
+  // Persistir ticket ante un refresh accidental
   useEffect(() => {
     try {
       const saved = localStorage.getItem(CART_KEY);
@@ -81,7 +81,7 @@ export default function CajaPage() {
 
   function addLine(p: ProductDTO, quantity: number) {
     setCart((c) => {
-      // Si es por unidad y ya está en el carrito, se suma a la misma línea
+      // Si es por unidad y ya está en el ticket, se suma a la misma línea
       const existing = p.unit === "UNIT" ? c.find((l) => l.code === p.code) : undefined;
       if (existing) {
         return c.map((l) => (l === existing ? { ...l, quantity: l.quantity + quantity } : l));
@@ -257,7 +257,7 @@ export default function CajaPage() {
     }
   }
 
-  // Atajos: F2 = validar venta, F4 = leer balanza, Esc = cerrar ticket.
+  // Atajos: F2 = cobrar, F4 = leer balanza, Esc = cerrar ticket.
   // Además escucha el lector USB cuando el foco NO está en un campo
   // (el lector "tipea" muy rápido y termina con Enter).
   useEffect(() => {
@@ -344,7 +344,7 @@ export default function CajaPage() {
           </div>
 
           <button className="primary big" onClick={product ? handleQty : handleCode}>
-            Agregar al carrito
+            Agregar al ticket
           </button>
 
           {hasSerial && (
@@ -358,17 +358,17 @@ export default function CajaPage() {
               </div>
               {lastRaw && <p className="muted">Última trama: <code>{JSON.stringify(lastRaw)}</code></p>}
               <p className="muted">
-                Enter para avanzar · <span className="kbd">F2</span> validar venta · lector USB: escaneá directo
+                Enter para avanzar · <span className="kbd">F2</span> cobrar · lector USB: escaneá directo
               </p>
             </>
           )}
         </section>
 
-        {/* Carrito */}
+        {/* Ticket en curso */}
         <section className="panel">
-          <h2>Carrito</h2>
+          <h2>Ticket</h2>
           {cart.length === 0 ? (
-            <p className="muted">Vacío. Cargá un código para empezar.</p>
+            <p className="muted">Ticket vacío. Pesá o escaneá un producto para empezar.</p>
           ) : (
             <table>
               <thead>
@@ -434,7 +434,7 @@ export default function CajaPage() {
               Vaciar
             </button>
             <button className="primary big" onClick={validateSale} disabled={cart.length === 0 || saving}>
-              {saving ? "Guardando…" : "Validar venta (F2)"}
+              {saving ? "Guardando…" : "Cobrar (F2)"}
             </button>
           </div>
         </section>

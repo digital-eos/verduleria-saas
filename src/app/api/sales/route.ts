@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
  * POST /api/sales
  *   { items: [{ code: "0001", quantity: 1.25 }, ...], paymentMethod?: "CASH" | ... }
  * `quantity` = kilos para productos por kg, unidades (entero) para productos por unidad.
- * Valida el carrito: el precio SIEMPRE se toma de la base (no del navegador),
+ * Valida el ticket: el precio SIEMPRE se toma de la base (no del navegador),
  * calcula subtotales y total, y guarda la venta con su fecha y el cajero.
  */
 export async function POST(req: NextRequest) {
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => null);
     const rawItems: unknown[] = Array.isArray(body?.items) ? body.items : [];
     if (rawItems.length === 0) {
-      return NextResponse.json({ error: "El carrito está vacío" }, { status: 400 });
+      return NextResponse.json({ error: "El ticket está vacío" }, { status: 400 });
     }
 
     const pm = body?.paymentMethod;

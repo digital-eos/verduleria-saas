@@ -1,7 +1,7 @@
 # 📒 Libretita — Chau cuaderno, hola Libretita
 
 Punto de venta web para negocios de barrio (almacenes, kioscos, verdulerías…): catálogo de productos vendidos **por kilo o por unidad**,
-carga por código + peso/cantidad (manual o leyendo la balanza), validación del carrito,
+carga por código + peso/cantidad (manual o leyendo la balanza), cobro del ticket,
 medio de pago opcional y registro de ventas con fecha.
 
 **Stack:** Next.js 15 (App Router) · Prisma 6 · PostgreSQL (Neon vía Vercel) · TypeScript.
@@ -12,12 +12,13 @@ medio de pago opcional y registro de ventas con fecha.
 |--------------|-----|----------|
 | `/login`     | —   | Ingreso. En el primer uso permite crear el administrador. |
 | `/`          | —   | Página de presentación pública, con acceso a usuarios arriba a la derecha. |
-| `/caja`      | Todos | **Caja**: código o nombre → peso (o cantidad) → carrito → medio de pago (opcional) → *Validar venta* (F2). |
+| `/caja`      | Todos | **Caja** (cobrar): balanza, escáner o código/nombre → peso (o cantidad) → ticket → medio de pago (opcional) → *Cobrar* (F2). |
 | `/ventas`    | Todos | Ventas del día (el admin puede elegir cualquier día), detalle, medio de pago, CSV. Solo el admin anula. |
 | `/dashboard` | Admin | Reportes por rango: facturación por día y por hora, ranking de productos, medio de pago, cajero. |
 | `/productos` | Admin | Alta, edición, desactivación de productos (código PLU, nombre, por kilo / por unidad, precio). |
 | `/usuarios`  | Admin | Alta de usuarios, rol (Admin / Cajero), reseteo de clave, desactivar. |
 | `/auditoria` | Admin | Registro de ingresos, cambios de precio, anulaciones, cambios de usuarios… |
+| `/configuracion` | Admin | Ajustes técnicos. `/configuracion/balanza`: diagnóstico de la balanza (modo espía). |
 
 ## Usuarios y permisos
 
@@ -106,4 +107,4 @@ y `NEXT_PUBLIC_EAN_DECIMALS` (verificar con una etiqueta de peso conocido).
 
 ## Atajos de teclado (Caja)
 
-`Enter` avanzar · `F4` leer balanza · `F2` validar venta · `Esc` cerrar ticket
+`Enter` avanzar · `F4` leer balanza · `F2` cobrar · `Esc` cerrar ticket

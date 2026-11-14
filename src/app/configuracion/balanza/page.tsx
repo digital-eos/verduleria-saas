@@ -7,6 +7,7 @@
  * (modo PC, modo continuo o modo impresora ECO/NOVO).
  */
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { isSerialSupported, parseWeightFrame, systelCrc } from "@/lib/scale";
 
@@ -229,6 +230,7 @@ export default function BalanzaDiagPage() {
 
   return (
     <>
+      <p className="muted"><Link href="/configuracion">← Configuración</Link></p>
       <h1>Diagnóstico de balanza</h1>
       <p className="muted" style={{ marginTop: -8 }}>
         Muestra todo lo que envía la balanza, sin interpretar. Usalo para descubrir el formato del modo impresora o del
