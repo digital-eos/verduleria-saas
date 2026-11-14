@@ -6,6 +6,19 @@ import type { PaymentProvider, ProviderName } from "./types";
 export * from "./types";
 export { MockMercadoPagoProvider } from "./mock";
 
+/**
+ * FEATURE_MP_QR="true" muestra el cobro con QR de Mercado Pago (en preparación).
+ * Por defecto está APAGADO: no aparece en la caja ni en Configuración, y sus APIs responden 404.
+ */
+export function isMpQrEnabled(): boolean {
+  return process.env.FEATURE_MP_QR?.trim().toLowerCase() === "true";
+}
+
+/** Respuesta de las rutas de Mercado Pago cuando el cobro QR está apagado */
+export function mpQrDisabledResponse() {
+  return Response.json({ error: "No encontrado" }, { status: 404 });
+}
+
 /** PAYMENT_PROVIDER=mock|mercadopago (por defecto: mock = modo demo) */
 export function providerName(): ProviderName {
   return process.env.PAYMENT_PROVIDER === "mercadopago" ? "mercadopago" : "mock";

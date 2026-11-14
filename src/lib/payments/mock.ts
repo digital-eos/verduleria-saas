@@ -1,6 +1,5 @@
-import { randomInt, randomUUID } from "node:crypto";
+import { randomInt } from "node:crypto";
 import { prisma } from "@/lib/prisma";
-import { buildMercadoPagoLikeQr } from "./emv";
 import {
   QR_TTL_MINUTES,
   PaymentProviderError,
@@ -20,6 +19,15 @@ export function mockOrderId(): string {
   return s;
 }
 
+/**
+ * Contenido del QR de DEMO: texto plano, SIN ningún valor de pago.
+ * No usa el formato EMVCo de Mercado Pago: si alguien lo escanea con la app de MP (o con la
+ * cámara del celular) solo ve este texto, nunca un cobro. Sirve para mostrar el proceso al cliente.
+ */
+function demoQrText(orderId: string, total: number): string {
+  return `LIBRETITA DEMO - QR de prueba, NO es un pago real. Total: $ ${total.toFixed(2)} - Orden: ${orderId}`;
+}
+
 /** Segundos tras los cuales el pago se aprueba solo (0 = desactivado, hay que tocar "Simular pago") */
 const autoApproveSeconds = () => {
   const n = Number(process.env.MOCK_AUTO_APPROVE_SECONDS ?? 0);
@@ -37,7 +45,7 @@ export class MockMercadoPagoProvider implements PaymentProvider {
 
   async createQrOrder(input: CreateQrOrderInput): Promise<CreateQrOrderResult> {
     const orderId = mockOrderId();
-    const qrData = buildMercadoPagoLikeQr({ uuid: randomUUID(), amount: input.totalAmount.toFixed(2) });
+    const qrData = demoQrText(orderId, input.totalAmount);
     const expiresAt = new Date(Date.now() + QR_TTL_MINUTES * 60_000).toISOString();
     return { orderId, qrData, status: "created", expiresAt };
   }

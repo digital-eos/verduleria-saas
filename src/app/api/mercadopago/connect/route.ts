@@ -4,6 +4,7 @@ import { HttpError, requireUser } from "@/lib/auth";
 import { merchantIdFor } from "@/lib/merchant";
 import { signValue } from "@/lib/payments/crypto";
 import { OAUTH_STATE_COOKIE, OAUTH_STATE_TTL, authorizationUrl } from "@/lib/payments/oauth";
+import { isMpQrEnabled, mpQrDisabledResponse } from "@/lib/payments";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ export type OAuthStatePayload = { state: string; merchantId: number; uid: number
  * y manda al navegador a autorizar la app en Mercado Pago.
  */
 export async function GET(req: NextRequest) {
+  if (!isMpQrEnabled()) return mpQrDisabledResponse(); // cobro QR apagado (FEATURE_MP_QR)
   const back = (error: string) =>
     NextResponse.redirect(new URL(`/configuracion/pagos?error=${encodeURIComponent(error)}`, req.url));
   try {

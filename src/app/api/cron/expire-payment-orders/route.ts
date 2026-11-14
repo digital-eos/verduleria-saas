@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { syncPaymentOrder } from "@/lib/payments/service";
+import { isMpQrEnabled, mpQrDisabledResponse } from "@/lib/payments";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -34,10 +35,9 @@ function authorized(req: NextRequest): boolean {
  * y cargar CRON_SECRET en las variables de entorno de Vercel.
  */
 export async function GET(req: NextRequest) {
-  if (!process.env.CRON_SECRET?.trim()) {
-    console.error("[cron expire-payment-orders] falta CRON_SECRET");
-    return NextResponse.json({ error: "Falta la variable CRON_SECRET" }, { status: 500 });
-  }
+  if (!isMpQrEnabled()) return mpQrDisabledResponse(); // cobro QR apagado (FEATURE_MP_QR)
+  // Sin CRON_SECRET (vacío o ausente) nunca queda abierta: authorized() da false → 401
+  if (!process.env.CRON_SECRET?.trim()) console.error("[cron expire-payment-orders] falta CRON_SECRET");
   if (!authorized(req)) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
 
   const rows = await prisma.paymentOrder.findMany({

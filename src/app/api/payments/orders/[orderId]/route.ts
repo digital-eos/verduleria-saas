@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { handleError, requireUser } from "@/lib/auth";
 import { findPaymentOrder, syncPaymentOrder } from "@/lib/payments/service";
+import { isMpQrEnabled, mpQrDisabledResponse } from "@/lib/payments";
 
 export const dynamic = "force-dynamic";
 
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
  * actualiza el estado y, si está "processed", registra la venta (una sola vez).
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ orderId: string }> }) {
+  if (!isMpQrEnabled()) return mpQrDisabledResponse(); // cobro QR apagado (FEATURE_MP_QR)
   try {
     await requireUser();
     const { orderId } = await params;

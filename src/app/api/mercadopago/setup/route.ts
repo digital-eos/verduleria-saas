@@ -3,7 +3,7 @@ import { HttpError, handleError, requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { merchantIdFor } from "@/lib/merchant";
-import { providerName } from "@/lib/payments";
+import { providerName, isMpQrEnabled, mpQrDisabledResponse } from "@/lib/payments";
 import { provisionStoreAndPos, toAccountStatusDTO } from "@/lib/payments/account";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +23,7 @@ function coord(v: unknown, label: string, limit: number): number {
  * crea la sucursal y la caja que falten. También sirve para reintentar si falló al conectar.
  */
 export async function POST(req: NextRequest) {
+  if (!isMpQrEnabled()) return mpQrDisabledResponse(); // cobro QR apagado (FEATURE_MP_QR)
   try {
     const me = await requireUser("ADMIN");
     const merchantId = await merchantIdFor(me);

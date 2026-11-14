@@ -7,6 +7,7 @@ import { safeEqual, verifySignedValue } from "@/lib/payments/crypto";
 import { OAUTH_STATE_COOKIE, exchangeCode, fetchNickname } from "@/lib/payments/oauth";
 import { provisionStoreAndPos, saveConnection } from "@/lib/payments/account";
 import type { OAuthStatePayload } from "../connect/route";
+import { isMpQrEnabled, mpQrDisabledResponse } from "@/lib/payments";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +19,7 @@ export const dynamic = "force-dynamic";
  * 3. Crea la sucursal y la caja si el comercio ya tiene dirección; si no, la pide en /configuracion/pagos.
  */
 export async function GET(req: NextRequest) {
+  if (!isMpQrEnabled()) return mpQrDisabledResponse(); // cobro QR apagado (FEATURE_MP_QR)
   const go = (query: string) => {
     const res = NextResponse.redirect(new URL(`/configuracion/pagos?${query}`, req.url));
     res.cookies.set(OAUTH_STATE_COOKIE, "", { path: "/api/mercadopago/callback", maxAge: 0 });

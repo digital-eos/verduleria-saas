@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { providerName, verifyWebhookSignature } from "@/lib/payments";
+import { isMpQrEnabled, providerName, verifyWebhookSignature } from "@/lib/payments";
 import { syncPaymentOrder } from "@/lib/payments/service";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +18,9 @@ export const dynamic = "force-dynamic";
  * ESE COMERCIO (syncPaymentOrder → getMerchantMpClient) antes de registrar la venta.
  */
 export async function POST(req: NextRequest) {
+  // Cobro QR apagado (FEATURE_MP_QR): 200 para que MP no reintente, sin procesar nada
+  if (!isMpQrEnabled()) return NextResponse.json({ ok: true, ignored: true });
+
   const body = await req.json().catch(() => null);
   const dataId: string | null = req.nextUrl.searchParams.get("data.id") ?? body?.data?.id ?? null;
 

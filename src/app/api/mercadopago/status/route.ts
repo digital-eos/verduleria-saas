@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { handleError, requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getMerchantForUser, hasStoreAddress } from "@/lib/merchant";
-import { providerName } from "@/lib/payments";
+import { providerName, isMpQrEnabled, mpQrDisabledResponse } from "@/lib/payments";
 import { toAccountStatusDTO } from "@/lib/payments/account";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +13,7 @@ export const dynamic = "force-dynamic";
  * Nunca devuelve tokens.
  */
 export async function GET() {
+  if (!isMpQrEnabled()) return mpQrDisabledResponse(); // cobro QR apagado (FEATURE_MP_QR)
   try {
     const me = await requireUser();
     const merchant = await getMerchantForUser(me);
