@@ -12,7 +12,7 @@ medio de pago opcional y registro de ventas con fecha.
 |--------------|-----|----------|
 | `/login`     | —   | Ingreso. En el primer uso permite crear el administrador. |
 | `/`          | —   | Página de presentación pública, con acceso a usuarios arriba a la derecha. |
-| `/caja`      | Todos | **Caja** (cobrar): balanza, escáner o código/nombre → peso (o cantidad) → ticket → un toque en el medio de pago (Efectivo, Débito, Mercado Pago…) cobra directo (F2 = efectivo). |
+| `/caja`      | Todos | **Caja** (cobrar), 3 modos que cargan el mismo ticket: **Balanza** (código/nombre → peso o cantidad), **Scan** (cámara o lector USB) y **Precio** (teclado tipo calculadora: el monto entra como “Producto no registrado”). Un toque en el medio de pago (Efectivo, Débito, Mercado Pago = QR…) cobra directo (F2 = efectivo). |
 | `/ventas`    | Todos | Ventas del día (el admin puede elegir cualquier día), detalle, medio de pago, CSV. Solo el admin anula. Pestaña **Reporte** (admin, `/ventas?vista=reporte`): por rango, facturación por día y por hora, ranking de productos, medio de pago, cajero. `/dashboard` redirige acá. |
 | `/productos` | Admin | Alta, edición, desactivación de productos (código PLU, nombre, por kilo / por unidad, precio). |
 | `/usuarios`  | Admin | Alta de usuarios, rol (Admin / Cajero), reseteo de clave, desactivar. |

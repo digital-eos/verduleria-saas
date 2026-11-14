@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
 
       for (const i of s.items) {
         const q = Number(i.quantity);
-        if (i.unit === "KG") totalKg += q; else totalUnits += q;
+        if (i.unit === "KG") totalKg += q; else if (i.productId !== null) totalUnits += q;
         const p = products.get(i.productCode) ?? { code: i.productCode, name: i.productName, unit: i.unit, quantity: 0, total: 0 };
         p.quantity += q;
         p.total += Number(i.subtotal);

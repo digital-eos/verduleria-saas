@@ -279,3 +279,12 @@ button.primary.mp-btn { background: var(--mp-blue); }
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
 .tabs button { background: none; border: none; border-bottom: 3px solid transparent; border-radius: 0; padding: 8px 14px; font-size: 15px; color: var(--muted); }
 .tabs button.active { border-bottom-color: var(--green); color: var(--green-dark); font-weight: 600; }
+
+/* Caja: modos de carga (Balanza / Scan / Precio) */
+.mode-switch { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; background: #eef3ee; border-radius: 10px; margin-bottom: 16px; }
+.mode-switch button { background: none; border: none; padding: 10px 6px; font-size: 15px; font-weight: 600; color: var(--muted); border-radius: 8px; }
+.mode-switch button.active { background: #fff; color: var(--green-dark); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.amount-input { font-size: 32px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.keypad button { padding: 16px 0; font-size: 22px; font-weight: 600; background: #fff; border: 1px solid var(--line); }
+.keypad button.primary { background: var(--green); border-color: var(--green); color: #fff; font-size: 18px; }

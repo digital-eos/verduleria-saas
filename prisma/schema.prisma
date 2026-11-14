@@ -94,12 +94,13 @@ model Sale {
 /// Línea del carrito. Se guarda una "foto" del nombre, unidad y precio al momento de la venta,
 /// así si después cambiás el precio del producto, el histórico no se altera.
 /// `quantity` = kilos (unit KG) o unidades (unit UNIT).
+/// `productId` null = "Producto no registrado" (monto libre cargado en modo Precio de la caja).
 model SaleItem {
   id          Int      @id @default(autoincrement())
   saleId      Int
   sale        Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  productId   Int
-  product     Product  @relation(fields: [productId], references: [id])
+  productId   Int?
+  product     Product? @relation(fields: [productId], references: [id], onDelete: Restrict)
   productCode String
   productName String
   unit        SaleUnit

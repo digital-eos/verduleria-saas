@@ -93,7 +93,7 @@ export async function createPaymentOrder(me: AuthUser, rawItems: unknown): Promi
       // MP pide cantidades enteras: cada línea va como 1 × subtotal (ej. "Tomate · 1,250 kg").
       // Así la suma de items es exactamente el total.
       items: lines.map((l) => ({
-        title: `${l.productName} · ${formatQty(Number(l.quantity), l.unit)}`,
+        title: l.productId === null ? l.productName : `${l.productName} · ${formatQty(Number(l.quantity), l.unit)}`,
         unitPrice: Number(l.subtotal),
         quantity: 1,
         externalCode: l.productCode,

@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
     const total = completed.reduce((acc, s) => acc.plus(s.total), zero);
     const items = completed.flatMap((s) => s.items);
     const totalKg = items.filter((i) => i.unit === "KG").reduce((acc, i) => acc.plus(i.quantity), zero);
-    const totalUnits = items.filter((i) => i.unit === "UNIT").reduce((acc, i) => acc.plus(i.quantity), zero);
+    const totalUnits = items.filter((i) => i.unit === "UNIT" && i.productId !== null).reduce((acc, i) => acc.plus(i.quantity), zero);
 
     // Total por medio de pago ("NONE" = sin especificar)
     const byPayment: Record<string, number> = {};

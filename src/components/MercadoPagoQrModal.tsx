@@ -16,7 +16,7 @@ type Phase = "creating" | "waiting" | "approved" | "expired" | "canceled" | "err
 
 type Props = {
   /** Ticket a cobrar (el servidor recalcula precios y total) */
-  items: { code: string; quantity: number }[];
+  items: ({ code: string; quantity: number } | { amount: number })[];
   /** Total estimado en el navegador, para mostrar mientras se genera el QR */
   estimatedTotal: number;
   /** Retomar un cobro ya creado (ej. si se recargó la página) */

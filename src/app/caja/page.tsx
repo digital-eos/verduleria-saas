@@ -17,7 +17,23 @@ type CartLine = {
   unit: Unit;
   price: number;
   quantity: number;
+  /** Monto libre del modo Precio ("Producto no registrado") */
+  free?: boolean;
 };
+
+/** Modo de carga: cambia solo cómo se agrega al ticket (el ticket es uno solo) */
+type Mode = "balanza" | "scan" | "precio";
+const MODES: { id: Mode; label: string }[] = [
+  { id: "balanza", label: "⚖️ Balanza" },
+  { id: "scan", label: "📷 Scan" },
+  { id: "precio", label: "🧮 Precio" },
+];
+const MODE_KEY = "libretita.cajaMode.v1";
+const FREE_NAME = "Producto no registrado";
+const KEYPAD = ["7", "8", "9", "4", "5", "6", "1", "2", "3", "00", "0", ","];
+
+/** Lo que se manda al servidor por cada línea del ticket */
+const toPayload = (l: CartLine) => (l.free ? { amount: l.price } : { code: l.code, quantity: l.quantity });
 
 const CART_KEY = "verduleria.cart.v2";
 /** Cobro QR en curso: si se recarga la página, se retoma (no se pierde un pago) */
@@ -72,6 +88,18 @@ export default function CajaPage() {
 
   const codeRef = useRef<HTMLInputElement>(null);
   const qtyRef = useRef<HTMLInputElement>(null);
+  const scanRef = useRef<HTMLInputElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+
+  const [mode, setMode] = useState<Mode>("balanza");
+  const [scanInput, setScanInput] = useState("");
+  const [amountInput, setAmountInput] = useState("");
+  useEffect(() => {
+    try {
+      const m = localStorage.getItem(MODE_KEY);
+      if (m && MODES.some((x) => x.id === m)) setMode(m as Mode);
+    } catch {}
+  }, []);
 
   // PC (Chrome/Edge con Web Serial): balanza + lector USB. Móvil: cámara.
   const [hasSerial, setHasSerial] = useState<boolean | null>(null);
@@ -83,8 +111,47 @@ export default function CajaPage() {
     hasSerialRef.current = s;
     setHasSerial(s);
   }, []);
-  /** En móvil no enfocamos para no abrir el teclado después de cada escaneo */
-  const focusCode = () => { if (hasSerialRef.current) codeRef.current?.focus(); };
+  /**
+   * Foco al campo de entrada del modo actual. En móvil no enfocamos el código ni el
+   * scan para no abrir el teclado (el modo Precio usa su propio teclado en pantalla).
+   */
+  const focusCode = (m: Mode = mode) => {
+    if (m === "precio") amountRef.current?.focus();
+    else if (hasSerialRef.current) (m === "scan" ? scanRef : codeRef).current?.focus();
+  };
+
+  function changeMode(m: Mode) {
+    setMode(m);
+    setMessage(null);
+    try { localStorage.setItem(MODE_KEY, m); } catch {}
+    setTimeout(() => focusCode(m));
+  }
+
+  /** Modo Precio: teclado tipo calculadora ("1500", "1500,50") */
+  function pressKey(k: string) {
+    setAmountInput((v) => {
+      if (k === ",") return v.includes(",") ? v : (v || "0") + ",";
+      const dec = v.split(",")[1];
+      if (dec !== undefined && dec.length + k.length > 2) return v; // máximo 2 decimales
+      if (v.replace(",", "").length >= 9) return v;
+      return !v || v === "0" ? k.replace(/^0+/, "") || "0" : v + k;
+    });
+    amountRef.current?.focus();
+  }
+
+  /** Modo Precio: agrega el monto como "Producto no registrado" */
+  function addFree() {
+    const price = parsePrice(amountInput);
+    if (price === null) {
+      if (amountInput.trim()) setMessage({ type: "error", text: "Monto inválido. Ej: 1500 o 1500,50" });
+      amountRef.current?.focus();
+      return;
+    }
+    setCart((c) => [...c, { key: crypto.randomUUID(), code: "S/C", name: FREE_NAME, unit: "UNIT", price, quantity: 1, free: true }]);
+    setMessage({ type: "ok", text: `+ ${FREE_NAME} · ${formatMoney(price)}` });
+    setAmountInput("");
+    amountRef.current?.focus();
+  }
 
   // Persistir ticket ante un refresh accidental
   useEffect(() => {
@@ -172,8 +239,10 @@ export default function CajaPage() {
       const res = await apiFetch(`/api/products/by-code/${encodeURIComponent(normalizeCode(code))}`);
       if (res.ok) {
         const p = (await res.json()) as ProductDTO;
-        if (p.unit === "UNIT") addLine(p, 1);
-        else await selectProduct(p);
+        if (p.unit === "UNIT") return addLine(p, 1);
+        // Por kilo hace falta el peso: pasamos al modo Balanza con el producto elegido
+        if (mode !== "balanza") changeMode("balanza");
+        await selectProduct(p);
         return;
       }
       if (res.status !== 404) throw new Error("No se pudo buscar el producto");
@@ -351,7 +420,7 @@ export default function CajaPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           paymentMethod: payment,
-          items: cart.map((l) => ({ code: l.code, quantity: l.quantity })),
+          items: cart.map(toPayload),
         }),
       });
       const data = await res.json();
@@ -401,14 +470,90 @@ export default function CajaPage() {
       <div className="grid-pos">
         {/* Columna de carga */}
         <section className="panel">
-          <h2>Cargar producto</h2>
-          {hasSerial === false && (
-            <button className="primary big" onClick={() => setScanning(true)} style={{ marginBottom: 14 }}>
-              📷 Escanear producto
-            </button>
-          )}
+          <div className="mode-switch" role="tablist" aria-label="Modo de carga">
+            {MODES.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                role="tab"
+                aria-selected={mode === m.id}
+                className={mode === m.id ? "active" : ""}
+                onClick={() => changeMode(m.id)}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
           {message && <div className={`msg ${message.type}`}>{message.text}</div>}
 
+          {mode === "scan" && (
+            <>
+              {hasSerial === false ? (
+                <button className="primary big" onClick={() => setScanning(true)} style={{ marginBottom: 14 }}>
+                  📷 Escanear producto
+                </button>
+              ) : (
+                <div className="field">
+                  <label>Escaneá con el lector (o tipeá el código y Enter)</label>
+                  <input
+                    ref={scanRef}
+                    autoFocus
+                    inputMode="numeric"
+                    value={scanInput}
+                    onChange={(e) => setScanInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== "Enter") return;
+                      const v = scanInput;
+                      setScanInput("");
+                      void addScanned(v);
+                    }}
+                    placeholder="Código de barras"
+                  />
+                </div>
+              )}
+              <p className="muted">
+                Por unidad se suma directo al ticket. Por kilo pasa a Balanza para cargar el peso.
+              </p>
+              {isAdmin && missingCode && (
+                <Link href={`/productos?code=${encodeURIComponent(missingCode)}`} style={{ display: "block", marginBottom: 12 }}>
+                  ➕ Cargar el producto {missingCode}
+                </Link>
+              )}
+            </>
+          )}
+
+          {mode === "precio" && (
+            <>
+              <div className="field">
+                <label>Monto ($) · se agrega como “{FREE_NAME}”</label>
+                <input
+                  ref={amountRef}
+                  className="amount-input"
+                  autoFocus
+                  // En móvil se usa el teclado de pantalla de abajo
+                  inputMode={hasSerial === false ? "none" : "decimal"}
+                  value={amountInput}
+                  onChange={(e) => setAmountInput(e.target.value.replace(/[^\d.,]/g, ""))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === "+") { e.preventDefault(); addFree(); }
+                    if (e.key === "Escape") setAmountInput("");
+                  }}
+                  placeholder="0"
+                />
+              </div>
+              <div className="keypad">
+                {KEYPAD.map((k) => (
+                  <button key={k} type="button" onClick={() => pressKey(k)}>{k}</button>
+                ))}
+                <button type="button" onClick={() => { setAmountInput(""); amountRef.current?.focus(); }}>C</button>
+                <button type="button" onClick={() => { setAmountInput((v) => v.slice(0, -1)); amountRef.current?.focus(); }} aria-label="Borrar">⌫</button>
+                <button type="button" className="primary" onClick={addFree}>+ Ticket</button>
+              </div>
+              <p className="muted">Enter o + agrega el monto al ticket. Después cobrá con el medio de pago (Mercado Pago = QR).</p>
+            </>
+          )}
+
+          {mode === "balanza" && (<>
           <div className="field">
             <label>Código (PLU) o nombre del producto</label>
             <input
@@ -504,8 +649,9 @@ export default function CajaPage() {
           <button className="primary big" onClick={product && qtyInput.trim() ? handleQty : handleCode}>
             Agregar al ticket
           </button>
+          </>)}
 
-          {hasSerial && (
+          {mode === "balanza" && hasSerial && (
             <>
               <hr style={{ border: 0, borderTop: "1px solid var(--line)", margin: "20px 0" }} />
 
@@ -546,11 +692,11 @@ export default function CajaPage() {
                     <td>{l.name}</td>
                     <td className="num">{formatUnitPrice(l.price, l.unit)}</td>
                     <td className="num" style={{ whiteSpace: "nowrap" }}>
-                      {l.unit === "UNIT" && (
+                      {l.unit === "UNIT" && !l.free && (
                         <button className="qty-btn" onClick={() => changeUnitQty(l.key, -1)}>−</button>
                       )}
-                      {formatQty(l.quantity, l.unit)}
-                      {l.unit === "UNIT" && (
+                      {l.free ? "—" : formatQty(l.quantity, l.unit)}
+                      {l.unit === "UNIT" && !l.free && (
                         <button className="qty-btn" onClick={() => changeUnitQty(l.key, 1)}>+</button>
                       )}
                     </td>
@@ -628,7 +774,7 @@ export default function CajaPage() {
 
       {qr && (
         <MercadoPagoQrModal
-          items={cart.map((l) => ({ code: l.code, quantity: l.quantity }))}
+          items={cart.map(toPayload)}
           estimatedTotal={total}
           resumeOrderId={qr.resume}
           onCreated={(id) => rememberQr(id)}
