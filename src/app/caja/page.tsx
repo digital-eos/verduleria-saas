@@ -74,6 +74,23 @@ export default function CajaPage() {
   const [receipt, setReceipt] = useState<SaleDTO | null>(null);
   // Cobro con QR de Mercado Pago: null = cerrado; resume = orden a retomar
   const [qr, setQr] = useState<{ resume: string | null } | null>(null);
+  // Con Mercado Pago real, el comercio tiene que tener su cuenta conectada y la caja QR creada
+  const [mpBlocked, setMpBlocked] = useState<string | null>(null);
+  useEffect(() => {
+    apiFetch("/api/mercadopago/status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((s: { provider: string; ready: boolean; connected: boolean; status: string | null } | null) => {
+        if (!s || s.provider !== "mercadopago" || s.ready) return setMpBlocked(null);
+        setMpBlocked(
+          s.status === "revoked"
+            ? "Reconectá tu cuenta de Mercado Pago para cobrar con QR."
+            : s.connected
+              ? "Falta crear la caja QR de Mercado Pago."
+              : "Mercado Pago no está conectado.",
+        );
+      })
+      .catch(() => {});
+  }, []);
 
   // Precios (ex módulo "Precios"): el admin cambia el precio del producto
   // encontrado sin salir de la caja, o carga uno que no existe.
@@ -408,6 +425,7 @@ export default function CajaPage() {
     if (cart.length === 0 || total <= 0 || saving || qr) return;
     // Mercado Pago → cobro con QR. La venta se registra sola cuando el pago queda aprobado.
     if (payment === "MERCADOPAGO") {
+      if (mpBlocked) return;
       setMessage(null);
       setQr({ resume: null });
       return;
@@ -726,13 +744,24 @@ export default function CajaPage() {
                   type="button"
                   className={`primary${m === "MERCADOPAGO" ? " mp-btn" : ""}`}
                   onClick={() => validateSale(m)}
-                  disabled={cart.length === 0 || total <= 0 || saving}
+                  disabled={cart.length === 0 || total <= 0 || saving || (m === "MERCADOPAGO" && !!mpBlocked)}
+                  title={m === "MERCADOPAGO" && mpBlocked ? mpBlocked : undefined}
                 >
                   {m === "MERCADOPAGO" ? "Mercado Pago (QR)" : PAYMENT_LABELS[m]}
                   {m === "CASH" && hasSerial && <span className="kbd">F2</span>}
                 </button>
               ))}
             </div>
+            {mpBlocked && (
+              <p className="muted" style={{ margin: "8px 0 0" }}>
+                {mpBlocked}{" "}
+                {isAdmin ? (
+                  <Link href="/configuracion/pagos">Conectar en Configuración → Pagos</Link>
+                ) : (
+                  "Pedile al administrador que lo conecte."
+                )}
+              </p>
+            )}
           </div>
 
           <button onClick={() => setCart([])} disabled={cart.length === 0}>

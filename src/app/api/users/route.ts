@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { handleError, requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
+import { merchantIdFor } from "@/lib/merchant";
 import { MIN_PASSWORD, USERNAME_RE, hashPassword, normalizeUsername } from "@/lib/password";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +42,8 @@ export async function POST(req: NextRequest) {
     }
 
     const user = await prisma.user.create({
-      data: { username, name, role, passwordHash: hashPassword(password) },
+      // Mismo comercio que el admin que lo crea
+      data: { username, name, role, passwordHash: hashPassword(password), merchantId: await merchantIdFor(me) },
       select: publicFields,
     });
     await audit(me, "USER_CREATE", "User", user.id, { username, name, role });

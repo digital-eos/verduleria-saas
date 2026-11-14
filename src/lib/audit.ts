@@ -15,7 +15,10 @@ export type AuditAction =
   | "SALE_PAYMENT_CHANGE"
   | "USER_CREATE"
   | "USER_UPDATE"
-  | "USER_PASSWORD_RESET";
+  | "USER_PASSWORD_RESET"
+  | "MP_CONNECT"
+  | "MP_DISCONNECT"
+  | "MP_SETUP";
 
 export const AUDIT_LABELS: Record<AuditAction, string> = {
   SETUP: "Configuración inicial",
@@ -31,6 +34,9 @@ export const AUDIT_LABELS: Record<AuditAction, string> = {
   USER_CREATE: "Usuario creado",
   USER_UPDATE: "Usuario modificado",
   USER_PASSWORD_RESET: "Clave cambiada",
+  MP_CONNECT: "Mercado Pago conectado",
+  MP_DISCONNECT: "Mercado Pago desconectado",
+  MP_SETUP: "Caja de Mercado Pago creada",
 };
 
 export async function audit(

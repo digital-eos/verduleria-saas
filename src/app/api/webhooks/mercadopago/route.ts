@@ -13,8 +13,9 @@ export const dynamic = "force-dynamic";
  *   Evento:  "Order (Mercado Pago)"
  * y copiar la "clave secreta" a MP_WEBHOOK_SECRET.
  *
- * No confiamos en el contenido del aviso: validamos la firma y después consultamos
- * la orden a la API (syncPaymentOrder), que es la que manda.
+ * No confiamos en el contenido del aviso: validamos la firma, buscamos la cuenta del comercio
+ * por el `user_id` del aviso y volvemos a leer la orden (GET /v1/orders/{id}) con EL TOKEN DE
+ * ESE COMERCIO (syncPaymentOrder → getMerchantMpClient) antes de registrar la venta.
  */
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
@@ -36,14 +37,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Firma inválida" }, { status: 401 });
     }
 
-    console.log("[webhook mercadopago]", body?.type, body?.action, dataId);
+    const mpUserId = body?.user_id != null ? String(body.user_id) : null;
+    console.log("[webhook mercadopago]", body?.type, body?.action, dataId, mpUserId);
     if (!dataId) return NextResponse.json({ ok: true });
+
+    // Cuenta del comercio que recibió el pago. Si no la conocemos, el aviso no es para nosotros.
+    const account = mpUserId ? await prisma.mercadoPagoAccount.findUnique({ where: { mpUserId } }) : null;
+    if (!account) {
+      console.warn("[webhook mercadopago] user_id sin cuenta conectada, se ignora", { mpUserId, dataId });
+      return NextResponse.json({ ok: true, ignored: true });
+    }
 
     // Avisos de otras cosas (pagos online, etc.) o de órdenes que no son nuestras: se ignoran con 200
     const row = await prisma.paymentOrder.findUnique({ where: { mpOrderId: dataId } });
     if (!row) return NextResponse.json({ ok: true, ignored: true });
+    if (row.merchantId !== account.merchantId) {
+      console.warn("[webhook mercadopago] la orden es de otro comercio, se ignora", { dataId, mpUserId });
+      return NextResponse.json({ ok: true, ignored: true });
+    }
 
-    const order = await syncPaymentOrder(row);
+    // force: aunque ya esté pagado, volvemos a consultar (puede ser un aviso de reembolso)
+    const order = await syncPaymentOrder(row, { force: true });
     return NextResponse.json({ ok: true, status: order.status });
   } catch (e) {
     console.error("[webhook mercadopago]", e);

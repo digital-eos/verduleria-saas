@@ -29,6 +29,9 @@ const LABELS: Record<string, string> = {
   USER_CREATE: "Usuario creado",
   USER_UPDATE: "Usuario modificado",
   USER_PASSWORD_RESET: "Clave cambiada",
+  MP_CONNECT: "Mercado Pago conectado",
+  MP_DISCONNECT: "Mercado Pago desconectado",
+  MP_SETUP: "Caja de Mercado Pago creada",
 };
 const IMPORTANT = new Set(["SALE_CANCEL", "PRODUCT_UPDATE", "PRODUCT_DELETE", "LOGIN_FAILED", "USER_PASSWORD_RESET"]);
 

@@ -6,6 +6,11 @@ import Link from "next/link";
  */
 const items = [
   {
+    href: "/configuracion/pagos",
+    title: "💳 Pagos · Mercado Pago",
+    text: "Conectar la cuenta de Mercado Pago del comercio para cobrar con QR en la Caja.",
+  },
+  {
     href: "/configuracion/balanza",
     title: "⚖️ Balanza",
     text: "Conectar y probar la balanza: ver lo que envía (modo espía) para dejarla funcionando con la Caja.",

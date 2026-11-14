@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { isPayment, toSaleDTO } from "@/lib/dto";
 import { HttpError, handleError, requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
+import { setSaleStatus } from "@/lib/sales";
 import { dateKeyAR, todayAR } from "@/lib/dates";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -43,7 +44,6 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     if (body.status !== undefined) {
       if (me.role !== "ADMIN") throw new HttpError(403, "Solo un administrador puede anular ventas");
       if (body.status !== "CANCELLED" && body.status !== "COMPLETED") throw new HttpError(400, "Estado inválido");
-      data.status = body.status;
     }
     if (body.paymentMethod !== undefined) {
       if (me.role !== "ADMIN" && dateKeyAR(before.createdAt) !== todayAR()) {
@@ -55,12 +55,12 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
       data.paymentMethod = isPayment(body.paymentMethod) ? body.paymentMethod : null;
     }
 
-    const sale = await prisma.sale.update({ where: { id }, data, include });
+    if (body.paymentMethod !== undefined) await prisma.sale.update({ where: { id }, data });
+    // Anular / restaurar: misma lógica que el reembolso de Mercado Pago (incluye auditoría)
+    if (body.status !== undefined) await setSaleStatus(id, body.status, me);
+    const sale = await prisma.sale.findUniqueOrThrow({ where: { id }, include });
 
     const info = { venta: id, total: Number(before.total) };
-    if (data.status && data.status !== before.status) {
-      await audit(me, data.status === "CANCELLED" ? "SALE_CANCEL" : "SALE_RESTORE", "Sale", id, info);
-    }
     if (body.paymentMethod !== undefined && (data.paymentMethod ?? null) !== before.paymentMethod) {
       await audit(me, "SALE_PAYMENT_CHANGE", "Sale", id, {
         ...info,

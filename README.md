@@ -48,6 +48,11 @@ medio de pago opcional y registro de ventas con fecha.
 | POST | `/api/payments/orders/:orderId/cancel` | Cancela el cobro |
 | POST | `/api/payments/orders/:orderId/simulate` | **Solo modo demo**: simula el pago |
 | POST | `/api/webhooks/mercadopago` | Notificaciones de Mercado Pago (pública, validada con firma) |
+| GET | `/api/mercadopago/connect` | Inicia el OAuth: redirige a Mercado Pago (admin) |
+| GET | `/api/mercadopago/callback` | Vuelta del OAuth: guarda los tokens cifrados y crea sucursal + caja |
+| POST | `/api/mercadopago/disconnect` | Desconecta la cuenta (`status: "revoked"`) (admin) |
+| GET | `/api/mercadopago/status` | Estado de la conexión (sin tokens) |
+| POST | `/api/mercadopago/setup` | Dirección del comercio + crear sucursal/caja si faltan (admin) |
 
 > El precio **siempre** se toma de la base al validar (no del navegador), y cada línea guarda una
 > copia del nombre y precio del momento: si mañana cambiás el precio, el histórico no cambia.
@@ -59,7 +64,9 @@ medio de pago opcional y registro de ventas con fecha.
 - `Product` (id, code único, name, unit `KG`/`UNIT`, price, active, fechas)
 - `Sale` (id, createdAt, total, status, paymentMethod opcional, userId = cajero)
 - `SaleItem` (saleId, productId, productCode, productName, unit, unitPrice, quantity, subtotal)
-- `payment_orders` (id, sale_id, provider `mock`/`mercadopago`, mp_order_id, total_amount, qr_data, status, expires_at, items, fechas)
+- `payment_orders` (id, sale_id, merchant_id, provider `mock`/`mercadopago`, mp_order_id, total_amount, qr_data, status, expires_at, items, fechas)
+- `merchants` (nombre y dirección del comercio; los usuarios pertenecen a un comercio)
+- `mercadopago_accounts` (1 por comercio: mp_user_id, tokens **cifrados** AES-256-GCM, expires_at, sucursal y caja, status `connected`/`revoked`)
 
 ## Cobro con QR de Mercado Pago
 
@@ -69,9 +76,13 @@ aprobado (`processed`) se registra la venta sola, con medio de pago *Mercado Pag
 
 - **Modo demo** (`PAYMENT_PROVIDER=mock`, por defecto): no se cobra nada. El modal muestra *MODO DEMO* y un
   botón *Simular pago (demo)*. Con `MOCK_AUTO_APPROVE_SECONDS=8` se aprueba solo a los 8 s.
-- **Producción**: `PAYMENT_PROVIDER=mercadopago` + `MP_ACCESS_TOKEN`, `MP_EXTERNAL_POS_ID`, `MP_WEBHOOK_SECRET`.
-  Además, en Mercado Pago: crear la sucursal y la caja (POS) y configurar el webhook de **Order** apuntando a
-  `https://<tu-dominio>/api/webhooks/mercadopago`. Nada más cambia: la interfaz es la misma.
+- **Producción**: `PAYMENT_PROVIDER=mercadopago` + `MP_CLIENT_ID`, `MP_CLIENT_SECRET`, `MP_REDIRECT_URI`,
+  `MP_TOKEN_ENCRYPTION_KEY`, `MP_WEBHOOK_SECRET`. En la app de Mercado Pago: cargar la Redirect URL
+  (`https://<tu-dominio>/api/mercadopago/callback`) y el webhook de **Order** apuntando a
+  `https://<tu-dominio>/api/webhooks/mercadopago`.
+  Cada comercio conecta **su** cuenta en *Configuración → Pagos* (OAuth): al conectar se crean solas la
+  sucursal y la caja QR. El token se renueva solo cuando faltan menos de 7 días para que venza; si Mercado
+  Pago lo rechaza, la cuenta queda desconectada y se pide reconectar.
 
 Toda la comunicación con Mercado Pago pasa por el servidor (`src/lib/payments/`): el access token nunca
 llega al navegador. Los puntos a revisar al conectar la API real están marcados con `// TODO MP:`.

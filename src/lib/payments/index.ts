@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { MockMercadoPagoProvider } from "./mock";
-import { MercadoPagoOrdersProvider } from "./mercadopago";
+import { getMerchantMpClient } from "./account";
 import type { PaymentProvider, ProviderName } from "./types";
 
 export * from "./types";
@@ -17,16 +17,21 @@ function requiredEnv(name: string): string {
   return v;
 }
 
-/** Devuelve el proveedor configurado. Es el ÚNICO lugar donde se elige demo vs. real. */
-export function getPaymentProvider(): PaymentProvider {
-  if (providerName() === "mercadopago") {
-    return new MercadoPagoOrdersProvider(requiredEnv("MP_ACCESS_TOKEN"), requiredEnv("MP_EXTERNAL_POS_ID"));
-  }
+/**
+ * Proveedor para cobrar en nombre de un comercio. Es el ÚNICO lugar donde se elige demo vs. real.
+ * Real: token + caja de la cuenta de Mercado Pago que conectó ESE comercio (OAuth).
+ */
+export async function getPaymentProvider(merchantId: number): Promise<PaymentProvider> {
+  if (providerName() === "mercadopago") return (await getMerchantMpClient(merchantId)).provider;
   return new MockMercadoPagoProvider();
 }
 
+/** Antigüedad máxima aceptada de un webhook (diferencia entre ts y la hora del servidor) */
+const WEBHOOK_TOLERANCE_MS = 10 * 60_000;
+
 /**
  * Valida la firma de una notificación (webhook) de Mercado Pago.
+ * Rechaza también los avisos con ts a más de 10 minutos de la hora actual.
  *   x-signature: "ts=1704908010,v1=618c8534..."   x-request-id: "<uuid>"
  *   firma = HMAC-SHA256(MP_WEBHOOK_SECRET, "id:<data.id>;request-id:<x-request-id>;ts:<ts>;")
  * Docs: https://www.mercadopago.com.ar/developers/es/docs/your-integrations/notifications/webhooks
@@ -44,6 +49,12 @@ export function verifyWebhookSignature(opts: {
   const ts = parts.ts;
   const v1 = parts.v1;
   if (!ts || !v1) return false;
+
+  // Anti-replay: el aviso tiene que ser reciente. ts puede venir en segundos o en milisegundos.
+  const tsNum = Number(ts);
+  if (!Number.isFinite(tsNum)) return false;
+  const tsMs = tsNum < 1e12 ? tsNum * 1000 : tsNum;
+  if (Math.abs(Date.now() - tsMs) > WEBHOOK_TOLERANCE_MS) return false;
 
   // Los ids alfanuméricos van en minúscula en el manifest (según la doc de MP)
   let manifest = "";

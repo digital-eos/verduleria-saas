@@ -1,6 +1,7 @@
-import { Prisma, type SaleUnit } from "@prisma/client";
+import { Prisma, type SaleStatus, type SaleUnit } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { HttpError } from "@/lib/auth";
+import { HttpError, type AuthUser } from "@/lib/auth";
+import { audit } from "@/lib/audit";
 import { normalizeCode } from "@/lib/format";
 
 /** Línea de monto libre (modo Precio de la caja): no tiene producto asociado */
@@ -120,3 +121,30 @@ export const linesFromJSON = (lines: SaleLineJSON[]): SaleLine[] =>
     quantity: new Prisma.Decimal(l.quantity),
     subtotal: new Prisma.Decimal(l.subtotal),
   }));
+
+/**
+ * Anula (CANCELLED) o restaura (COMPLETED) una venta y lo deja en auditoría.
+ * Es la ÚNICA lógica de anulación: la usan el admin (PATCH /api/sales/:id) y el reembolso
+ * de Mercado Pago. Hoy no hay stock ni caja que revertir: solo cambia el estado.
+ * Idempotente: si la venta ya estaba en ese estado no hace nada y devuelve false.
+ */
+export async function setSaleStatus(
+  saleId: number,
+  status: SaleStatus,
+  actor: Pick<AuthUser, "id" | "username"> | null,
+  opts: { details?: Record<string, Prisma.InputJsonValue>; usernameOverride?: string } = {},
+): Promise<boolean> {
+  const before = await prisma.sale.findUnique({ where: { id: saleId } });
+  if (!before) throw new HttpError(404, "Venta no encontrada");
+  const changed = await prisma.sale.updateMany({ where: { id: saleId, status: { not: status } }, data: { status } });
+  if (changed.count === 0) return false;
+  await audit(
+    actor,
+    status === "CANCELLED" ? "SALE_CANCEL" : "SALE_RESTORE",
+    "Sale",
+    saleId,
+    { venta: saleId, total: Number(before.total), ...opts.details },
+    opts.usernameOverride,
+  );
+  return true;
+}

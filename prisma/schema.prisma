@@ -24,6 +24,52 @@ model User {
   updatedAt    DateTime   @updatedAt
   sales        Sale[]
   auditLogs    AuditLog[]
+  /// Comercio al que pertenece (hoy hay uno solo; null = se asigna el comercio por defecto)
+  merchantId   Int?
+  merchant     Merchant?  @relation(fields: [merchantId], references: [id], onDelete: SetNull)
+}
+
+/// El comercio (verdulería, almacén…). Nombre y dirección se usan para crear la sucursal en Mercado Pago.
+model Merchant {
+  id           Int                 @id @default(autoincrement())
+  name         String
+  streetName   String?             @map("street_name")
+  streetNumber String?             @map("street_number")
+  city         String?
+  state        String?
+  latitude     Decimal?            @db.Decimal(9, 6)
+  longitude    Decimal?            @db.Decimal(9, 6)
+  reference    String?
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+  users        User[]
+  mpAccount    MercadoPagoAccount?
+  paymentOrders PaymentOrder[]
+
+  @@map("merchants")
+}
+
+/// Cuenta de Mercado Pago conectada por OAuth (una por comercio).
+/// Los tokens se guardan cifrados (AES-256-GCM con MP_TOKEN_ENCRYPTION_KEY), nunca en claro.
+/// `status`: "connected" | "revoked".
+model MercadoPagoAccount {
+  id              String    @id @default(cuid())
+  merchantId      Int       @unique @map("merchant_id")
+  merchant        Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  mpUserId        String    @unique @map("mp_user_id")
+  mpNickname      String?   @map("mp_nickname")
+  accessToken     String    @map("access_token")
+  refreshToken    String    @map("refresh_token")
+  expiresAt       DateTime  @map("expires_at")
+  storeId         String?   @map("store_id")
+  externalStoreId String?   @map("external_store_id")
+  posId           String?   @map("pos_id")
+  externalPosId   String?   @map("external_pos_id")
+  status          String    @default("connected")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("mercadopago_accounts")
 }
 
 /// Registro de acciones sensibles: logins, cambios de precio, anulaciones, usuarios…
@@ -129,6 +175,9 @@ model PaymentOrder {
   /// Líneas del ticket ya validadas por el servidor (para crear la venta al aprobarse el pago)
   items       Json
   userId      Int?      @map("user_id")
+  /// Comercio que cobra: su cuenta de Mercado Pago (token + caja) se usa para crear/consultar/cancelar
+  merchantId  Int?      @map("merchant_id")
+  merchant    Merchant? @relation(fields: [merchantId], references: [id], onDelete: SetNull)
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 

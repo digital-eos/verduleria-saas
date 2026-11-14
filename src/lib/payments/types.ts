@@ -3,7 +3,7 @@
  * solo conocen esta interfaz: pasar de demo a Mercado Pago real es cambiar
  * PAYMENT_PROVIDER, sin tocar la UI.
  *
- * SOLO SERVIDOR: las implementaciones usan secretos (access token) y la base.
+ * SOLO SERVIDOR: las implementaciones usan secretos (access token de cada comercio) y la base.
  */
 
 /** Mismos valores que devuelve la API de Orders de Mercado Pago. "processed" = pagado. */
@@ -52,9 +52,12 @@ export interface PaymentProvider {
 /** Validez del QR: 16 minutos (expiration_time "PT16M" en MP) */
 export const QR_TTL_MINUTES = 16;
 
+/** Mensaje que ve el comercio cuando su cuenta de Mercado Pago quedó desconectada */
+export const RECONNECT_MESSAGE = "Reconectá tu cuenta de Mercado Pago";
+
 /** Error de comunicación con el proveedor de pagos (se muestra un mensaje genérico al usuario) */
 export class PaymentProviderError extends Error {
-  constructor(message: string, public details?: unknown) {
+  constructor(message: string, public details?: unknown, public httpStatus?: number) {
     super(message);
     this.name = "PaymentProviderError";
   }

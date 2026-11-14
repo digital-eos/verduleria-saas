@@ -1,5 +1,6 @@
 import {
   QR_TTL_MINUTES,
+  RECONNECT_MESSAGE,
   PaymentProviderError,
   type CreateQrOrderInput,
   type CreateQrOrderResult,
@@ -9,6 +10,8 @@ import {
 } from "./types";
 
 const API = "https://api.mercadopago.com";
+/** Tiempo máximo de espera de cada llamada a la API */
+const MP_TIMEOUT_MS = 10_000;
 
 /** Todos los importes viajan como string decimal con 2 decimales: "1500.00" */
 const amount = (n: number) => n.toFixed(2);
@@ -38,9 +41,70 @@ type MpOrder = {
   type_response?: { qr_data?: string };
 };
 
+/** El token del comercio ya no sirve (revocado / vencido): hay que volver a conectar la cuenta */
+export class MercadoPagoReconnectError extends PaymentProviderError {
+  constructor(details?: unknown) {
+    super(RECONNECT_MESSAGE, details);
+    this.name = "MercadoPagoReconnectError";
+  }
+}
+
+export type MpRequestOptions = {
+  body?: unknown;
+  idempotencyKey?: string;
+  /** Se llama ante un 401 (token revocado), antes de tirar MercadoPagoReconnectError */
+  onUnauthorized?: () => Promise<void>;
+};
+
+/** Llamada a la API de Mercado Pago con el token de UN comercio */
+export async function mpRequest<T>(
+  accessToken: string,
+  method: "GET" | "POST",
+  path: string,
+  opts: MpRequestOptions = {},
+): Promise<T> {
+  let res: Response;
+  let text: string;
+  try {
+    res = await fetch(`${API}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        ...(opts.idempotencyKey ? { "X-Idempotency-Key": opts.idempotencyKey } : {}),
+      },
+      body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+      cache: "no-store",
+      signal: AbortSignal.timeout(MP_TIMEOUT_MS),
+    });
+    text = await res.text();
+  } catch (e) {
+    if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) {
+      console.error(`[mercadopago] ${method} ${path} -> timeout (${MP_TIMEOUT_MS} ms)`);
+      throw new PaymentProviderError("Mercado Pago no respondió a tiempo", { method, path });
+    }
+    throw e;
+  }
+  let data: unknown = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+  if (!res.ok) {
+    console.error(`[mercadopago] ${method} ${path} -> ${res.status}`, data);
+    if (res.status === 401) {
+      await opts.onUnauthorized?.().catch((e) => console.error("[mercadopago] onUnauthorized", e));
+      throw new MercadoPagoReconnectError(data);
+    }
+    throw new PaymentProviderError(`Mercado Pago respondió ${res.status}`, data, res.status);
+  }
+  return data as T;
+}
+
 /**
- * Mercado Pago REAL (API de Orders, QR dinámico).
- * Se activa con PAYMENT_PROVIDER=mercadopago + MP_ACCESS_TOKEN + MP_EXTERNAL_POS_ID (+ MP_WEBHOOK_SECRET).
+ * Mercado Pago REAL (API de Orders, QR dinámico), con el token y la caja de UN comercio.
+ * Lo arma getMerchantMpClient(merchantId) (ver account.ts): nunca hay un token global.
  * Docs: https://www.mercadopago.com.ar/developers/es/reference/in-person-payments/qr-code/orders/create-order/post
  */
 export class MercadoPagoOrdersProvider implements PaymentProvider {
@@ -49,32 +113,11 @@ export class MercadoPagoOrdersProvider implements PaymentProvider {
   constructor(
     private readonly accessToken: string,
     private readonly externalPosId: string,
+    private readonly onUnauthorized?: () => Promise<void>,
   ) {}
 
-  private async request<T>(method: "GET" | "POST", path: string, body?: unknown, idempotencyKey?: string) {
-    const res = await fetch(`${API}${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        "Content-Type": "application/json",
-        ...(idempotencyKey ? { "X-Idempotency-Key": idempotencyKey } : {}),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      cache: "no-store",
-    });
-    const text = await res.text();
-    let data: unknown = null;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch {
-      data = text;
-    }
-    if (!res.ok) {
-      // TODO MP: revisar en los logs de Vercel los errores reales (400 = body inválido, 401 = token, 404 = POS…)
-      console.error(`[mercadopago] ${method} ${path} -> ${res.status}`, data);
-      throw new PaymentProviderError(`Mercado Pago respondió ${res.status}`, data);
-    }
-    return data as T;
+  private request<T>(method: "GET" | "POST", path: string, body?: unknown, idempotencyKey?: string) {
+    return mpRequest<T>(this.accessToken, method, path, { body, idempotencyKey, onUnauthorized: this.onUnauthorized });
   }
 
   async createQrOrder(input: CreateQrOrderInput): Promise<CreateQrOrderResult> {
@@ -90,8 +133,7 @@ export class MercadoPagoOrdersProvider implements PaymentProvider {
         external_reference: input.externalReference,
         expiration_time: `PT${QR_TTL_MINUTES}M`,
         config: {
-          // TODO MP: MP_EXTERNAL_POS_ID es el "external_id" de la caja (POS) creada en Mercado Pago
-          // (POST /pos con su sucursal / store). Una caja = un QR a la vez.
+          // external_id de la caja del comercio (creada al conectar la cuenta). Una caja = un QR a la vez.
           qr: { external_pos_id: this.externalPosId, mode: "dynamic" },
         },
         // La suma de transactions.payments debe ser igual a total_amount

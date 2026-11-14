@@ -4,16 +4,19 @@ import { prisma } from "@/lib/prisma";
 import { HttpError, type AuthUser } from "@/lib/auth";
 import { formatQty } from "@/lib/format";
 import { toSaleDTO, type SaleDTO } from "@/lib/dto";
-import { buildSaleLines, linesFromJSON, linesToJSON, type SaleLineJSON } from "@/lib/sales";
+import { buildSaleLines, linesFromJSON, linesToJSON, setSaleStatus, type SaleLineJSON } from "@/lib/sales";
+import { merchantIdFor } from "@/lib/merchant";
 import {
   MockMercadoPagoProvider,
+  PaymentProviderError,
   getPaymentProvider,
   isFinalStatus,
   providerName,
   type OrderStatus,
   type PaymentProvider,
 } from "./index";
-import { MercadoPagoOrdersProvider } from "./mercadopago";
+import { MercadoPagoNotReadyError, mpErrorMessage } from "./account";
+import { MercadoPagoReconnectError } from "./mercadopago";
 
 /**
  * Lógica de cobro con QR, independiente del proveedor (demo o Mercado Pago real).
@@ -52,14 +55,26 @@ export const toPaymentOrderDTO = (r: RowWithSale): PaymentOrderDTO => ({
 
 const withSale = { sale: { include: { items: true, user: { select: { name: true } } } } } as const;
 
-/** El proveedor que creó la orden (una orden demo se sigue consultando en demo aunque cambie la config) */
-function providerFor(row: PaymentOrder): PaymentProvider {
+/** La cuenta del comercio no está lista (sin conectar / revocada / sin caja) → 409 con el mensaje tal cual */
+const isAccountError = (e: unknown): e is PaymentProviderError =>
+  e instanceof MercadoPagoReconnectError || e instanceof MercadoPagoNotReadyError;
+
+/**
+ * El proveedor que creó la orden, con el token y la caja del COMERCIO de la orden.
+ * (Una orden demo se sigue consultando en demo aunque cambie la config.)
+ */
+async function providerFor(row: PaymentOrder): Promise<PaymentProvider> {
   if (row.provider === "mock") return new MockMercadoPagoProvider();
-  const p = getPaymentProvider();
-  if (!(p instanceof MercadoPagoOrdersProvider)) {
+  if (providerName() !== "mercadopago") {
     throw new HttpError(409, "Esta orden es de Mercado Pago, pero PAYMENT_PROVIDER no está en 'mercadopago'");
   }
-  return p;
+  if (row.merchantId == null) throw new HttpError(409, "Este cobro no tiene comercio asociado");
+  try {
+    return await getPaymentProvider(row.merchantId);
+  } catch (e) {
+    if (isAccountError(e)) throw new HttpError(409, e.message);
+    throw e;
+  }
 }
 
 export async function findPaymentOrder(orderId: string) {
@@ -73,10 +88,18 @@ export async function createPaymentOrder(me: AuthUser, rawItems: unknown): Promi
   const { lines, total } = await buildSaleLines(rawItems);
   if (total.lte(0)) throw new HttpError(400, "El total tiene que ser mayor a $ 0");
 
-  const provider = getPaymentProvider();
+  const merchantId = await merchantIdFor(me);
+  let provider: PaymentProvider;
+  try {
+    provider = await getPaymentProvider(merchantId);
+  } catch (e) {
+    if (isAccountError(e)) throw new HttpError(409, e.message);
+    throw e;
+  }
   const row = await prisma.paymentOrder.create({
     data: {
       provider: provider.name,
+      merchantId,
       totalAmount: total,
       items: linesToJSON(lines),
       userId: me.id,
@@ -117,7 +140,8 @@ export async function createPaymentOrder(me: AuthUser, rawItems: unknown): Promi
     console.error("[payments] createQrOrder", e);
     await prisma.paymentOrder.delete({ where: { id: row.id } }).catch(() => {});
     if (e instanceof Error && e.message.startsWith("Falta la variable")) throw e;
-    throw new HttpError(502, "No pudimos generar el QR, intentá de nuevo");
+    if (isAccountError(e)) throw new HttpError(409, e.message);
+    throw new HttpError(502, mpErrorMessage(e, "No pudimos generar el QR, intentá de nuevo"));
   }
 }
 
@@ -151,17 +175,53 @@ async function finalizePaidOrder(row: PaymentOrder) {
   }
 }
 
-/** Consulta el estado al proveedor, lo guarda y, si se pagó, registra la venta. */
-export async function syncPaymentOrder(row: PaymentOrder): Promise<PaymentOrderDTO> {
+/** Margen después de expiresAt antes de dar el cobro por vencido (el QR de MP puede tardar en cerrar) */
+const EXPIRY_GRACE_MS = 2 * 60_000;
+
+export type SyncOptions = {
+  /** Consultar la API aunque el cobro ya esté pagado ("processed"): para detectar reembolsos (webhook) */
+  force?: boolean;
+};
+
+/**
+ * Consulta el estado al proveedor, lo guarda y:
+ * - si se pagó → registra la venta;
+ * - si se reembolsó → anula la venta (misma lógica que la anulación manual);
+ * - si venció (expiresAt + 2 min) y MP no dice "processed" → "expired".
+ */
+export async function syncPaymentOrder(row: PaymentOrder, opts: SyncOptions = {}): Promise<PaymentOrderDTO> {
   if (!row.mpOrderId) throw new HttpError(404, "No encontramos ese cobro");
 
-  if (!isFinalStatus(row.status)) {
-    const remote = await providerFor(row).getOrder(row.mpOrderId);
+  const overdue =
+    row.status === "created" && row.expiresAt != null && row.expiresAt.getTime() + EXPIRY_GRACE_MS < Date.now();
+
+  if (!isFinalStatus(row.status) || (opts.force && row.status === "processed")) {
+    let remote;
+    try {
+      remote = await (await providerFor(row)).getOrder(row.mpOrderId);
+    } catch (e) {
+      if (isAccountError(e)) throw new HttpError(409, e.message);
+      throw e;
+    }
     if (remote.status === "processed" && remote.totalAmount !== row.totalAmount.toFixed(2)) {
       console.warn(`[payments] ${row.mpOrderId}: total MP ${remote.totalAmount} ≠ total local ${row.totalAmount}`);
     }
-    if (remote.status !== row.status) {
-      row = await prisma.paymentOrder.update({ where: { id: row.id }, data: { status: remote.status } });
+
+    let next: OrderStatus = remote.status;
+    // Un cobro pagado solo puede pasar a reembolsado (los estados intermedios de MP se leen como "created")
+    if (row.status === "processed" && next !== "refunded") next = "processed";
+    // Vencido: si MP sigue "esperando el pago", lo cerramos nosotros
+    if (overdue && next === "created") next = "expired";
+
+    if (next === "refunded" && row.status !== "refunded" && row.saleId) {
+      // Primero la venta, después el estado: si algo falla en el medio, el reintento del webhook lo completa
+      await setSaleStatus(row.saleId, "CANCELLED", null, {
+        usernameOverride: "Mercado Pago",
+        details: { motivo: "Reembolso en Mercado Pago", orden: row.mpOrderId },
+      });
+    }
+    if (next !== row.status) {
+      row = await prisma.paymentOrder.update({ where: { id: row.id }, data: { status: next } });
     }
   }
   if (row.status === "processed" && !row.saleId) await finalizePaidOrder(row);
@@ -176,9 +236,11 @@ export async function cancelPaymentOrder(row: PaymentOrder): Promise<PaymentOrde
   if (current.status !== "created") return current;
 
   try {
-    await providerFor(row).cancelOrder(row.mpOrderId!);
+    await (await providerFor(row)).cancelOrder(row.mpOrderId!);
   } catch (e) {
     console.error("[payments] cancelOrder", e);
+    if (e instanceof HttpError && e.status === 409) throw e;
+    if (isAccountError(e)) throw new HttpError(409, e.message);
     // Puede haberse pagado / vencido mientras tanto
     const after = await syncPaymentOrder(row);
     if (after.status !== "created") return after;
