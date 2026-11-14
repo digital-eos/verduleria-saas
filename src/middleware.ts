@@ -5,7 +5,7 @@ const PUBLIC_EXACT = ["/"];
 // /api/webhooks: los llama Mercado Pago (sin sesión); se validan con firma
 // /api/cron: los llama Vercel Cron (sin sesión); se validan con CRON_SECRET
 const PUBLIC = ["/login", "/api/auth/login", "/api/auth/setup", "/api/webhooks", "/api/cron"];
-const ADMIN_PAGES = ["/productos", "/usuarios", "/auditoria", "/dashboard", "/configuracion"];
+const ADMIN_PAGES = ["/productos", "/usuarios", "/dashboard", "/configuracion"];
 
 const matches = (path: string, list: string[]) => list.some((p) => path === p || path.startsWith(p + "/"));
 

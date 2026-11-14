@@ -19,6 +19,11 @@ const items = [
     title: "⚖️ Balanza",
     text: "Conectar y probar la balanza: ver lo que envía (modo espía) para dejarla funcionando con la Caja.",
   },
+  {
+    href: "/configuracion/auditoria",
+    title: "🕵️ Auditoría",
+    text: "Registro de ingresos, cambios de precio, anulaciones de ventas y cambios de usuarios.",
+  },
 ];
 
 export default function ConfiguracionPage() {

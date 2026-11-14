@@ -2,8 +2,11 @@
 const nextConfig = {
   reactStrictMode: true,
   async redirects() {
-    // La pantalla de la balanza pasó a Configuración
-    return [{ source: "/balanza", destination: "/configuracion/balanza", permanent: true }];
+    // Balanza y Auditoría pasaron a Configuración
+    return [
+      { source: "/balanza", destination: "/configuracion/balanza", permanent: true },
+      { source: "/auditoria", destination: "/configuracion/auditoria", permanent: true },
+    ];
   },
 };
 

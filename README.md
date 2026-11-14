@@ -16,8 +16,7 @@ medio de pago opcional y registro de ventas con fecha.
 | `/ventas`    | Todos | Ventas del día (el admin puede elegir cualquier día), detalle, medio de pago, CSV. Solo el admin anula. Pestaña **Reporte** (admin, `/ventas?vista=reporte`): por rango, facturación por día y por hora, ranking de productos, medio de pago, cajero. `/dashboard` redirige acá. |
 | `/productos` | Admin | Alta, edición, desactivación de productos (código PLU, nombre, por kilo / por unidad, precio). |
 | `/usuarios`  | Admin | Alta de usuarios, rol (Admin / Cajero), reseteo de clave, desactivar. |
-| `/auditoria` | Admin | Registro de ingresos, cambios de precio, anulaciones, cambios de usuarios… |
-| `/configuracion` | Admin | Ajustes técnicos. `/configuracion/balanza`: diagnóstico de la balanza (modo espía). |
+| `/configuracion` | Admin | Ajustes técnicos. `/configuracion/balanza`: diagnóstico de la balanza (modo espía). `/configuracion/auditoria`: registro de ingresos, cambios de precio, anulaciones, cambios de usuarios… (`/auditoria` redirige acá). |
 
 ## Usuarios y permisos
 

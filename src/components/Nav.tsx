@@ -9,7 +9,6 @@ const links = [
   { href: "/ventas", label: "Ventas", admin: false },
   { href: "/productos", label: "Productos", admin: true },
   { href: "/usuarios", label: "Usuarios", admin: true },
-  { href: "/auditoria", label: "Auditoría", admin: true },
   { href: "/configuracion", label: "Configuración", admin: true },
 ];
 
