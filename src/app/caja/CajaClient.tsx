@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { PAYMENT_LABELS, PAYMENT_METHODS, type Payment, type ProductDTO, type SaleDTO, type Unit } from "@/lib/dto";
 import { formatMoney, formatQty, formatUnitPrice, normalizeCode, parseWeightInput } from "@/lib/format";
 import { parseScaleLabel } from "@/lib/barcode";
-import { SystelScale, isSerialSupported } from "@/lib/scale";
+import { SystelScale, isSerialSupported, isTouchDevice } from "@/lib/scale";
 import Link from "next/link";
 import { apiFetch, useIsAdmin } from "@/components/SessionProvider";
-import BarcodeScanner from "@/components/BarcodeScanner";
+import CameraScanner from "@/components/CameraScanner";
 import MercadoPagoQrModal from "@/components/MercadoPagoQrModal";
 import QuickProductModal from "@/components/QuickProductModal";
 
@@ -125,12 +125,15 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
   }, []);
 
   // PC (Chrome/Edge con Web Serial): balanza + lector USB. Móvil: cámara.
+  // Ojo: Chrome Android también trae Web Serial (por Bluetooth) desde la v138,
+  // así que además miramos que la pantalla no sea táctil como entrada principal.
   const [hasSerial, setHasSerial] = useState<boolean | null>(null);
   const hasSerialRef = useRef(false);
-  const [scanning, setScanning] = useState(false);
+  const [camOn, setCamOn] = useState(false);
+  const lastCamScan = useRef({ code: "", at: 0 });
   const scanBuf = useRef({ text: "", last: 0 });
   useEffect(() => {
-    const s = isSerialSupported();
+    const s = isSerialSupported() && !isTouchDevice();
     hasSerialRef.current = s;
     setHasSerial(s);
   }, []);
@@ -145,6 +148,8 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
 
   function changeMode(m: Mode) {
     setMode(m);
+    // En el celular, entrar a Scan abre la cámara; salir de Scan la apaga
+    setCamOn(m === "scan" && !hasSerialRef.current);
     setMessage(null);
     try { localStorage.setItem(MODE_KEY, m); } catch {}
     setTimeout(() => focusCode(m));
@@ -297,6 +302,16 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
     } catch (e) {
       setMessage({ type: "error", text: (e as Error).message });
     }
+  }
+
+  /** Código leído por la cámara: se apaga la cámara y se procesa igual que uno tipeado */
+  function onCameraCode(code: string) {
+    setCamOn(false);
+    const now = Date.now();
+    const last = lastCamScan.current;
+    if (code === last.code && now - last.at < 1500) return; // anti-rebote
+    lastCamScan.current = { code, at: now };
+    void addScanned(code);
   }
 
   /** Selecciona un producto y pasa al campo cantidad / lee la balanza */
@@ -534,29 +549,35 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
 
           {mode === "scan" && (
             <>
-              {hasSerial === false ? (
-                <button className="primary big" onClick={() => setScanning(true)} style={{ marginBottom: 14 }}>
-                  📷 Escanear producto
-                </button>
+              {camOn ? (
+                <>
+                  <CameraScanner onDetected={onCameraCode} />
+                  <button type="button" onClick={() => setCamOn(false)} style={{ width: "100%", marginBottom: 14 }}>
+                    ✕ Cerrar cámara
+                  </button>
+                </>
               ) : (
-                <div className="field">
-                  <label>Escaneá con el lector (o tipeá el código y Enter)</label>
-                  <input
-                    ref={scanRef}
-                    autoFocus
-                    inputMode="numeric"
-                    value={scanInput}
-                    onChange={(e) => setScanInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key !== "Enter") return;
-                      const v = scanInput;
-                      setScanInput("");
-                      void addScanned(v);
-                    }}
-                    placeholder="Código de barras"
-                  />
-                </div>
+                <button className="primary big" onClick={() => setCamOn(true)} style={{ marginBottom: 14 }}>
+                  📷 {hasSerial === false ? "Escanear con la cámara" : "Usar la cámara"}
+                </button>
               )}
+              <div className="field">
+                <label>{hasSerial === false ? "O tipeá el código y Enter" : "Escaneá con el lector (o tipeá el código y Enter)"}</label>
+                <input
+                  ref={scanRef}
+                  autoFocus={hasSerial === true}
+                  inputMode="numeric"
+                  value={scanInput}
+                  onChange={(e) => setScanInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter") return;
+                    const v = scanInput;
+                    setScanInput("");
+                    void addScanned(v);
+                  }}
+                  placeholder="Código de barras"
+                />
+              </div>
               <p className="muted">
                 Por unidad se suma directo al ticket. Por kilo pasa a Balanza para cargar el peso.
               </p>
@@ -870,16 +891,6 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
             closeQuickAdd();
           }}
           onCancel={closeQuickAdd}
-        />
-      )}
-
-      {scanning && (
-        <BarcodeScanner
-          onDetected={(code) => {
-            setScanning(false);
-            void addScanned(code);
-          }}
-          onCancel={() => setScanning(false)}
         />
       )}
     </>

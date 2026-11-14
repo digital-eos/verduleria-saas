@@ -26,6 +26,12 @@ type SerialPortLike = {
 export const isSerialSupported = () =>
   typeof navigator !== "undefined" && "serial" in navigator;
 
+/** Celular/tablet: la entrada principal es táctil (en una PC con pantalla táctil sigue siendo el mouse) */
+export const isTouchDevice = () =>
+  typeof window !== "undefined" &&
+  ((navigator as Navigator & { userAgentData?: { mobile?: boolean } }).userAgentData?.mobile === true ||
+    window.matchMedia?.("(pointer: coarse)").matches === true);
+
 export type ScaleReading = { kg: number; raw: string };
 
 /** CRC Systel: XOR de STX, todos los bytes de datos y ETX */
