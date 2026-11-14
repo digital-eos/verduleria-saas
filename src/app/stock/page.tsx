@@ -2,14 +2,23 @@
 
 import { useEffect, useState } from "react";
 import type { ProductDTO, Unit } from "@/lib/dto";
-import { formatUnitPrice, normalizeCode } from "@/lib/format";
+import { formatQty, formatUnitPrice, normalizeCode } from "@/lib/format";
 import { apiFetch } from "@/components/SessionProvider";
 import BarcodeScanner from "@/components/BarcodeScanner";
 
-type Form = { id?: number; code: string; name: string; unit: Unit; price: string };
-const empty: Form = { code: "", name: "", unit: "KG", price: "" };
+type Form = { id?: number; code: string; name: string; unit: Unit; price: string; quantityIn: string };
+const empty: Form = { code: "", name: "", unit: "KG", price: "", quantityIn: "" };
 
-export default function ProductosPage() {
+const toForm = (p: ProductDTO): Form => ({
+  id: p.id,
+  code: p.code,
+  name: p.name,
+  unit: p.unit,
+  price: String(p.price),
+  quantityIn: p.quantityIn === null ? "" : String(p.quantityIn),
+});
+
+export default function StockPage() {
   const [products, setProducts] = useState<ProductDTO[]>([]);
   const [q, setQ] = useState("");
   const [showInactive, setShowInactive] = useState(false);
@@ -27,7 +36,7 @@ export default function ProductosPage() {
     const res = await apiFetch(`/api/products/by-code/${encodeURIComponent(code)}`);
     if (res.ok) {
       const p = (await res.json()) as ProductDTO;
-      setForm({ id: p.id, code: p.code, name: p.name, unit: p.unit, price: String(p.price) });
+      setForm(toForm(p));
       setNotice(`"${p.name}" ya está cargado. Podés cambiarle el precio.`);
     } else if (res.status === 404) {
       setForm({ ...empty, code, unit: "UNIT" });
@@ -37,7 +46,7 @@ export default function ProductosPage() {
     }
   }
 
-  // Viene de la Caja: /productos?code=... ("Cargar el producto")
+  // Viene de la Caja: /stock?code=... ("Cargar el producto")
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get("code");
     if (code) void loadScanned(code);
@@ -58,6 +67,7 @@ export default function ProductosPage() {
       name: form.name,
       unit: form.unit,
       price: Number(form.price.replace(",", ".")),
+      quantityIn: form.quantityIn.trim() === "" ? null : form.quantityIn.trim().replace(",", "."),
     };
     const res = await apiFetch(form.id ? `/api/products/${form.id}` : "/api/products", {
       method: form.id ? "PUT" : "POST",
@@ -128,6 +138,16 @@ export default function ProductosPage() {
               required
             />
           </div>
+          <div className="field">
+            <label>
+              Cantidad ingresada ({form.unit === "KG" ? "kg" : "unidades"}) <span className="muted">— opcional</span>
+            </label>
+            <input
+              inputMode={form.unit === "KG" ? "decimal" : "numeric"}
+              value={form.quantityIn}
+              onChange={(e) => setForm({ ...form, quantityIn: e.target.value })}
+            />
+          </div>
           <div className="row">
             {form.id && (
               <button type="button" onClick={() => setForm(empty)} style={{ flex: "0 0 auto" }}>
@@ -161,6 +181,7 @@ export default function ProductosPage() {
               <th>Producto</th>
               <th>Venta</th>
               <th className="num">Precio</th>
+              <th className="num">Cant. ingresada</th>
               <th />
             </tr>
           </thead>
@@ -171,11 +192,10 @@ export default function ProductosPage() {
                 <td>{p.name}</td>
                 <td><span className="badge">{p.unit === "KG" ? "Por kilo" : "Por unidad"}</span></td>
                 <td className="num">{formatUnitPrice(p.price, p.unit)}</td>
+                <td className="num">{p.quantityIn === null ? <span className="muted">—</span> : formatQty(p.quantityIn, p.unit)}</td>
                 <td className="num" style={{ whiteSpace: "nowrap" }}>
                   <button
-                    onClick={() =>
-                      setForm({ id: p.id, code: p.code, name: p.name, unit: p.unit, price: String(p.price) })
-                    }
+                    onClick={() => setForm(toForm(p))}
                   >
                     Editar
                   </button>{" "}

@@ -31,19 +31,19 @@ model User {
 
 /// El comercio (verdulería, almacén…). Nombre y dirección se usan para crear la sucursal en Mercado Pago.
 model Merchant {
-  id           Int                 @id @default(autoincrement())
-  name         String
-  streetName   String?             @map("street_name")
-  streetNumber String?             @map("street_number")
-  city         String?
-  state        String?
-  latitude     Decimal?            @db.Decimal(9, 6)
-  longitude    Decimal?            @db.Decimal(9, 6)
-  reference    String?
-  createdAt    DateTime            @default(now()) @map("created_at")
-  updatedAt    DateTime            @updatedAt @map("updated_at")
-  users        User[]
-  mpAccount    MercadoPagoAccount?
+  id            Int                 @id @default(autoincrement())
+  name          String
+  streetName    String?             @map("street_name")
+  streetNumber  String?             @map("street_number")
+  city          String?
+  state         String?
+  latitude      Decimal?            @db.Decimal(9, 6)
+  longitude     Decimal?            @db.Decimal(9, 6)
+  reference     String?
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+  users         User[]
+  mpAccount     MercadoPagoAccount?
   paymentOrders PaymentOrder[]
 
   @@map("merchants")
@@ -53,21 +53,21 @@ model Merchant {
 /// Los tokens se guardan cifrados (AES-256-GCM con MP_TOKEN_ENCRYPTION_KEY), nunca en claro.
 /// `status`: "connected" | "revoked".
 model MercadoPagoAccount {
-  id              String    @id @default(cuid())
-  merchantId      Int       @unique @map("merchant_id")
-  merchant        Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  mpUserId        String    @unique @map("mp_user_id")
-  mpNickname      String?   @map("mp_nickname")
-  accessToken     String    @map("access_token")
-  refreshToken    String    @map("refresh_token")
-  expiresAt       DateTime  @map("expires_at")
-  storeId         String?   @map("store_id")
-  externalStoreId String?   @map("external_store_id")
-  posId           String?   @map("pos_id")
-  externalPosId   String?   @map("external_pos_id")
-  status          String    @default("connected")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id              String   @id @default(cuid())
+  merchantId      Int      @unique @map("merchant_id")
+  merchant        Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  mpUserId        String   @unique @map("mp_user_id")
+  mpNickname      String?  @map("mp_nickname")
+  accessToken     String   @map("access_token")
+  refreshToken    String   @map("refresh_token")
+  expiresAt       DateTime @map("expires_at")
+  storeId         String?  @map("store_id")
+  externalStoreId String?  @map("external_store_id")
+  posId           String?  @map("pos_id")
+  externalPosId   String?  @map("external_pos_id")
+  status          String   @default("connected")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@map("mercadopago_accounts")
 }
@@ -111,15 +111,17 @@ enum PaymentMethod {
 /// Catálogo de productos. `code` es el PLU (el mismo número que tiene cargado la balanza).
 /// `price` es el precio por kilo si unit = KG, o por unidad si unit = UNIT.
 model Product {
-  id        Int        @id @default(autoincrement())
-  code      String     @unique
-  name      String
-  unit      SaleUnit   @default(KG)
-  price     Decimal    @db.Decimal(12, 2)
-  active    Boolean    @default(true)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  saleItems SaleItem[]
+  id         Int        @id @default(autoincrement())
+  code       String     @unique
+  name       String
+  unit       SaleUnit   @default(KG)
+  price      Decimal    @db.Decimal(12, 2)
+  /// "Cantidad ingresada" (opcional): kilos si se vende por kilo, unidades si es por unidad.
+  quantityIn Decimal?   @db.Decimal(12, 3)
+  active     Boolean    @default(true)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  saleItems  SaleItem[]
 }
 
 /// Una venta = un carrito validado. El medio de pago es opcional.

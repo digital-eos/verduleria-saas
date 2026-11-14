@@ -34,3 +34,18 @@ export function normalizeCode(raw: string): string {
   const s = raw.trim();
   return /^\d{1,4}$/.test(s) ? s.padStart(4, "0") : s;
 }
+
+/**
+ * "Cantidad ingresada" (opcional): vacío/null -> null; si no, número >= 0
+ * (entero para productos por unidad). Devuelve `undefined` si es inválida.
+ */
+export function parseQuantityIn(raw: unknown, unit: "KG" | "UNIT"): number | null | undefined {
+  if (raw === null || raw === undefined || String(raw).trim() === "") return null;
+  const n = Number(String(raw).trim().replace(",", "."));
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  if (unit === "UNIT" && !Number.isInteger(n)) return undefined;
+  return Math.round(n * 1000) / 1000;
+}
+
+export const QUANTITY_IN_ERROR =
+  "Cantidad ingresada inválida (número ≥ 0; entero si el producto se vende por unidad)";

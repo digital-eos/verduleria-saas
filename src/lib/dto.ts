@@ -21,6 +21,8 @@ export type ProductDTO = {
   name: string;
   unit: Unit;
   price: number;
+  /** "Cantidad ingresada" (kg o unidades), opcional */
+  quantityIn: number | null;
   active: boolean;
 };
 
@@ -50,6 +52,7 @@ export const toProductDTO = (p: Product): ProductDTO => ({
   name: p.name,
   unit: p.unit,
   price: Number(p.price),
+  quantityIn: p.quantityIn === null ? null : Number(p.quantityIn),
   active: p.active,
 });
 

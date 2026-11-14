@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toProductDTO } from "@/lib/dto";
-import { normalizeCode } from "@/lib/format";
+import { QUANTITY_IN_ERROR, normalizeCode, parseQuantityIn } from "@/lib/format";
 import { HttpError, handleError, requireUser } from "@/lib/auth";
 import { audit, diff } from "@/lib/audit";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// PUT /api/products/:id  { code?, name?, price?, unit?, active? }   (solo admin)
+// PUT /api/products/:id  { code?, name?, price?, unit?, active?, quantityIn? (null o "" = sin valor) }   (solo admin)
 export async function PUT(req: NextRequest, { params }: Ctx) {
   try {
     const me = await requireUser("ADMIN");
@@ -30,13 +30,27 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
       data.price = new Prisma.Decimal(price.toFixed(2));
       plain.price = price.toFixed(2);
     }
+    if (body.quantityIn !== undefined) {
+      const unit = (plain.unit as "KG" | "UNIT" | undefined) ?? before.unit;
+      const quantityIn = parseQuantityIn(body.quantityIn, unit);
+      if (quantityIn === undefined) throw new HttpError(400, QUANTITY_IN_ERROR);
+      data.quantityIn = quantityIn === null ? null : new Prisma.Decimal(quantityIn);
+      plain.quantityIn = quantityIn === null ? null : String(quantityIn);
+    }
     if (plain.code && plain.code !== before.code && (await prisma.product.findUnique({ where: { code: plain.code as string } }))) {
       throw new HttpError(409, "Ese código ya está en uso");
     }
 
     const product = await prisma.product.update({ where: { id }, data });
     const changes = diff(
-      { code: before.code, name: before.name, unit: before.unit, active: before.active, price: before.price.toFixed(2) },
+      {
+        code: before.code,
+        name: before.name,
+        unit: before.unit,
+        active: before.active,
+        price: before.price.toFixed(2),
+        quantityIn: before.quantityIn === null ? null : String(Number(before.quantityIn)),
+      },
       plain,
     );
     if (Object.keys(changes).length) {

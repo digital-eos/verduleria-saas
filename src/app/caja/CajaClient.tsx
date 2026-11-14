@@ -270,7 +270,7 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
       const label = parseScaleLabel(code);
       if (label) return await addFromLabel(label);
       setMissingCode(code);
-      throw new Error(`Producto no cargado (código ${code}). Cargalo en Productos.`);
+      throw new Error(`Producto no cargado (código ${code}). Cargalo en Stock.`);
     } catch (e) {
       setMessage({ type: "error", text: (e as Error).message });
     }
@@ -537,7 +537,7 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
                 Por unidad se suma directo al ticket. Por kilo pasa a Balanza para cargar el peso.
               </p>
               {isAdmin && missingCode && (
-                <Link href={`/productos?code=${encodeURIComponent(missingCode)}`} style={{ display: "block", marginBottom: 12 }}>
+                <Link href={`/stock?code=${encodeURIComponent(missingCode)}`} style={{ display: "block", marginBottom: 12 }}>
                   ➕ Cargar el producto {missingCode}
                 </Link>
               )}
@@ -604,7 +604,7 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
             </div>
           )}
           {isAdmin && missingCode && !product && (
-            <Link href={`/productos?code=${encodeURIComponent(missingCode)}`} style={{ display: "block", margin: "-6px 0 12px" }}>
+            <Link href={`/stock?code=${encodeURIComponent(missingCode)}`} style={{ display: "block", margin: "-6px 0 12px" }}>
               ➕ Cargar el producto {missingCode}
             </Link>
           )}

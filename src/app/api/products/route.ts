@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toProductDTO } from "@/lib/dto";
-import { normalizeCode } from "@/lib/format";
+import { QUANTITY_IN_ERROR, normalizeCode, parseQuantityIn } from "@/lib/format";
 import { handleError, requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/products  { code, name, price, unit: "KG" | "UNIT" }   (solo admin)
+// POST /api/products  { code, name, price, unit: "KG" | "UNIT", quantityIn? }   (solo admin)
 export async function POST(req: NextRequest) {
   try {
     const me = await requireUser("ADMIN");
@@ -36,17 +36,27 @@ export async function POST(req: NextRequest) {
     const name = String(body?.name ?? "").trim();
     const price = Number(body?.price);
     const unit = body?.unit === "UNIT" ? "UNIT" : "KG";
+    const quantityIn = parseQuantityIn(body?.quantityIn, unit);
 
     if (!code || !name || !Number.isFinite(price) || price <= 0) {
       return NextResponse.json({ error: "Código, nombre y precio (> 0) son obligatorios" }, { status: 400 });
+    }
+    if (quantityIn === undefined) {
+      return NextResponse.json({ error: QUANTITY_IN_ERROR }, { status: 400 });
     }
     if (await prisma.product.findUnique({ where: { code } })) {
       return NextResponse.json({ error: `Ya existe un producto con el código ${code}` }, { status: 409 });
     }
     const product = await prisma.product.create({
-      data: { code, name, unit, price: new Prisma.Decimal(price.toFixed(2)) },
+      data: {
+        code,
+        name,
+        unit,
+        price: new Prisma.Decimal(price.toFixed(2)),
+        quantityIn: quantityIn === null ? null : new Prisma.Decimal(quantityIn),
+      },
     });
-    await audit(me, "PRODUCT_CREATE", "Product", product.id, { code, name, unit, price });
+    await audit(me, "PRODUCT_CREATE", "Product", product.id, { code, name, unit, price, quantityIn });
     return NextResponse.json(toProductDTO(product), { status: 201 });
   } catch (e) {
     return handleError(e);
