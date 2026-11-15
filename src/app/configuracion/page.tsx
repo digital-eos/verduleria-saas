@@ -20,6 +20,11 @@ const items = [
     text: "Conectar y probar la balanza: ver lo que envía (modo espía) para dejarla funcionando con la Caja.",
   },
   {
+    href: "/configuracion/equipos",
+    title: "📡 Equipos de balanza",
+    text: "Vincular el equipo Libretita que va enchufado a la balanza: cada venta cerrada llega sola a Ventas y Reportes.",
+  },
+  {
     href: "/configuracion/auditoria",
     title: "🕵️ Auditoría",
     text: "Registro de ingresos, cambios de precio, anulaciones de ventas y cambios de usuarios.",

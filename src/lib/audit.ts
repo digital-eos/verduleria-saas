@@ -18,7 +18,10 @@ export type AuditAction =
   | "USER_PASSWORD_RESET"
   | "MP_CONNECT"
   | "MP_DISCONNECT"
-  | "MP_SETUP";
+  | "MP_SETUP"
+  | "DEVICE_CLAIM"
+  | "DEVICE_CLAIM_FAILED"
+  | "DEVICE_UNLINK";
 
 export const AUDIT_LABELS: Record<AuditAction, string> = {
   SETUP: "Configuración inicial",
@@ -37,6 +40,9 @@ export const AUDIT_LABELS: Record<AuditAction, string> = {
   MP_CONNECT: "Mercado Pago conectado",
   MP_DISCONNECT: "Mercado Pago desconectado",
   MP_SETUP: "Caja de Mercado Pago creada",
+  DEVICE_CLAIM: "Equipo de balanza vinculado",
+  DEVICE_CLAIM_FAILED: "Vinculación de equipo fallida",
+  DEVICE_UNLINK: "Equipo de balanza desvinculado",
 };
 
 export async function audit(

@@ -16,7 +16,7 @@ medio de pago opcional y registro de ventas con fecha.
 | `/ventas`    | Todos | Ventas del día (el admin puede elegir cualquier día), detalle, medio de pago, CSV. Solo el admin anula. Pestaña **Reporte** (admin, `/ventas?vista=reporte`): por rango, facturación por día y por hora, ranking de productos, medio de pago, cajero. `/dashboard` redirige acá. |
 | `/stock`     | Admin | **Stock**: Alta, edición, desactivación de productos (código PLU, nombre, por kilo / por unidad, precio). |
 | `/usuarios`  | Admin | Alta de usuarios, rol (Admin / Cajero), reseteo de clave, desactivar. |
-| `/configuracion` | Admin | Ajustes técnicos. `/configuracion/balanza`: diagnóstico de la balanza (modo espía). `/configuracion/auditoria`: registro de ingresos, cambios de precio, anulaciones, cambios de usuarios… (`/auditoria` redirige acá). |
+| `/configuracion` | Admin | Ajustes técnicos. `/configuracion/equipos`: vincular el **equipo Libretita** de la balanza y ver si está en línea. `/configuracion/balanza`: diagnóstico de la balanza (modo espía). `/configuracion/auditoria`: registro de ingresos, cambios de precio, anulaciones, cambios de usuarios… (`/auditoria` redirige acá). |
 
 ## Usuarios y permisos
 
@@ -52,6 +52,10 @@ medio de pago opcional y registro de ventas con fecha.
 | POST | `/api/mercadopago/disconnect` | Desconecta la cuenta (`status: "revoked"`) (admin) |
 | GET | `/api/mercadopago/status` | Estado de la conexión (sin tokens) |
 | POST | `/api/mercadopago/setup` | Dirección del comercio + crear sucursal/caja si faltan (admin) |
+| POST | `/api/devices/sales` | **Equipo de balanza**: venta cerrada (pública, `X-Cle-Boitier` + `Authorization: Bearer`). Ver abajo. |
+| POST | `/api/devices/heartbeat` | **Equipo de balanza**: "estoy vivo" (versión, WiFi, ventas pendientes) |
+| GET / POST | `/api/devices` | Equipos del comercio + últimas ventas recibidas · `{ key, code, label? }` vincula un equipo (admin) |
+| DELETE | `/api/devices/:id` | Desvincula el equipo (admin) |
 
 > El precio **siempre** se toma de la base al validar (no del navegador), y cada línea guarda una
 > copia del nombre y precio del momento: si mañana cambiás el precio, el histórico no cambia.
@@ -65,6 +69,8 @@ medio de pago opcional y registro de ventas con fecha.
 - `SaleItem` (saleId, productId, productCode, productName, unit, unitPrice, quantity, subtotal)
 - `payment_orders` (id, sale_id, merchant_id, provider `mock`/`mercadopago`, mp_order_id, total_amount, qr_data, status, expires_at, items, fechas)
 - `merchants` (nombre y dirección del comercio; los usuarios pertenecen a un comercio)
+- `devices` (equipo de balanza: key, hash del secreto y del código de activación, comercio, última conexión, WiFi, firmware)
+- `device_sales` (venta recibida del equipo: event_id, ticket crudo, JSON, hora, total, sale_id si entró a Ventas)
 - `mercadopago_accounts` (1 por comercio: mp_user_id, tokens **cifrados** AES-256-GCM, expires_at, sucursal y caja, status `connected`/`revoked`)
 
 ## Cobro con QR de Mercado Pago
@@ -134,6 +140,23 @@ Configurar en `.env`: `NEXT_PUBLIC_EAN_MODE` (`CANTIDAD` o `TOTAL`, igual que en
 y `NEXT_PUBLIC_EAN_DECIMALS` (verificar con una etiqueta de peso conocido).
 
 **Importante:** los códigos PLU de la app tienen que coincidir con los PLU cargados en la balanza.
+
+## Equipo Libretita en la balanza (Kretz Novel Eco 2)
+
+Un ESP32 + WiFi enchufado al RS-232 de la balanza: al cerrar una venta (doble TOTAL) manda el resumen a
+`POST /api/devices/sales`. Las ventas decodificadas entran a **Ventas** y **Reportes** como líneas
+`BAL-<precio>` ("Balanza · $1.200/kg"), así el ranking de productos muestra las ventas por precio por kilo.
+
+- **Alta de equipos** (fábrica): `npm run device:create -- 20` con `DATABASE_URL` de producción. Imprime
+  `cle,secret,code_activation,url_activation`. Clave + código (+ QR de la URL) van a la etiqueta; clave + secreto
+  se graban en el firmware. En la base solo quedan los SHA-256.
+- **Vinculación**: el admin carga clave + código en *Configuración → Equipos* (o escanea el QR). Las ventas que el
+  equipo mandó antes se suman al vincularlo, con su hora original.
+- **Idempotencia**: por (equipo, `id_evenement`). Reenvío → 200 `doublon`. Mismo id con otro ticket (contador
+  reiniciado) → se guarda como `<id>~<hash>`.
+- **Hora de la venta**: `horodatage_boitier` si está entre recepción − 30 días y recepción + 5 min; si no, la de recepción.
+- `ticket_brut` y el JSON completo se guardan siempre (tabla `device_sales`), aunque no se haya podido decodificar.
+- Respuestas (en francés, las lee el firmware): `200 enregistree|doublon` · `400 json_invalide` · `401 non_autorise` · `500 erreur_serveur`.
 
 ## Atajos de teclado (Caja)
 

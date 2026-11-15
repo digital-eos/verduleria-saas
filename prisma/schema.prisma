@@ -45,6 +45,8 @@ model Merchant {
   users         User[]
   mpAccount     MercadoPagoAccount?
   paymentOrders PaymentOrder[]
+  devices       Device[]
+  deviceSales   DeviceSale[]
 
   @@map("merchants")
 }
@@ -135,6 +137,8 @@ model Sale {
   user          User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   items         SaleItem[]
   paymentOrder  PaymentOrder?
+  /// Si la venta vino de un equipo Libretita conectado a la balanza
+  deviceSale    DeviceSale?
 
   @@index([createdAt])
 }
@@ -185,4 +189,63 @@ model PaymentOrder {
 
   @@index([status])
   @@map("payment_orders")
+}
+
+/// Equipo Libretita (ESP32 + WiFi) enchufado a la salida RS-232 de una balanza comercial.
+/// `key` es la "clave" impresa en la etiqueta (pública, identifica el equipo). `secretHash` es el SHA-256
+/// del secreto grabado en el firmware (nunca se guarda en claro). `claimCodeHash` = SHA-256 del código de
+/// activación impreso en la etiqueta, que pide la app para vincular el equipo a un comercio.
+model Device {
+  id              Int          @id @default(autoincrement())
+  key             String       @unique
+  secretHash      String       @map("secret_hash")
+  claimCodeHash   String       @map("claim_code_hash")
+  merchantId      Int?         @map("merchant_id")
+  merchant        Merchant?    @relation(fields: [merchantId], references: [id], onDelete: SetNull)
+  label           String?
+  claimedAt       DateTime?    @map("claimed_at")
+  firmware        String?
+  scaleModel      String?      @map("scale_model")
+  lastSeenAt      DateTime?    @map("last_seen_at")
+  lastHeartbeatAt DateTime?    @map("last_heartbeat_at")
+  lastRssi        Int?         @map("last_rssi")
+  lastIp          String?      @map("last_ip")
+  pendingCount    Int?         @map("pending_count")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  sales           DeviceSale[]
+
+  @@map("devices")
+}
+
+/// Venta recibida de un equipo (POST /api/devices/sales), tal cual llegó. Idempotente por (equipo, `eventId`).
+/// Si se pudo decodificar (total > 0) y el equipo tiene comercio, se crea además la `Sale` (`saleId`),
+/// así aparece en Ventas y en los Reportes. `merchantId` = comercio del equipo al momento de recibirla
+/// (null si todavía no estaba vinculado: se asigna al vincularlo).
+model DeviceSale {
+  id           Int       @id @default(autoincrement())
+  eventId      String    @map("event_id")
+  deviceId     Int       @map("device_id")
+  device       Device    @relation(fields: [deviceId], references: [id], onDelete: Restrict)
+  merchantId   Int?      @map("merchant_id")
+  merchant     Merchant? @relation(fields: [merchantId], references: [id], onDelete: SetNull)
+  saleId       Int?      @unique @map("sale_id")
+  sale         Sale?     @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  receivedAt   DateTime  @default(now()) @map("received_at")
+  /// Hora de la venta usada en los reportes: la del equipo si es confiable, si no la de recepción
+  soldAt       DateTime  @map("sold_at")
+  deviceTime   DateTime? @map("device_time")
+  scaleDate    String?   @map("scale_date")
+  ticketNumber String?   @map("ticket_number")
+  itemCount    Int?      @map("item_count")
+  total        Decimal?  @db.Decimal(12, 2)
+  /// true si la venta se pudo decodificar (hay total)
+  decoded      Boolean   @default(false)
+  rawTicket    String    @map("raw_ticket")
+  payload      Json
+
+  @@unique([deviceId, eventId])
+  @@index([deviceId, receivedAt])
+  @@index([merchantId, soldAt])
+  @@map("device_sales")
 }

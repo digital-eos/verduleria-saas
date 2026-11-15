@@ -4,7 +4,16 @@ import { SESSION_COOKIE, verifySession } from "@/lib/session";
 const PUBLIC_EXACT = ["/"];
 // /api/webhooks: los llama Mercado Pago (sin sesión); se validan con firma
 // /api/cron: los llama Vercel Cron (sin sesión); se validan con CRON_SECRET
-const PUBLIC = ["/login", "/api/auth/login", "/api/auth/setup", "/api/webhooks", "/api/cron"];
+// /api/devices/sales y /heartbeat: los llama el equipo de la balanza; se validan con su clave + secreto
+const PUBLIC = [
+  "/login",
+  "/api/auth/login",
+  "/api/auth/setup",
+  "/api/webhooks",
+  "/api/cron",
+  "/api/devices/sales",
+  "/api/devices/heartbeat",
+];
 const ADMIN_PAGES = ["/stock", "/usuarios", "/dashboard", "/configuracion"];
 
 const matches = (path: string, list: string[]) => list.some((p) => path === p || path.startsWith(p + "/"));
@@ -24,7 +33,8 @@ export async function middleware(req: NextRequest) {
       return NextResponse.json({ error: "Sesión expirada. Volvé a ingresar." }, { status: 401 });
     }
     const url = new URL("/login", req.url);
-    url.searchParams.set("next", pathname);
+    // Con la búsqueda: el QR del equipo lleva ?cle=…&code=… y tiene que sobrevivir al login
+    url.searchParams.set("next", pathname + req.nextUrl.search);
     return NextResponse.redirect(url);
   }
 
