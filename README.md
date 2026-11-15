@@ -52,7 +52,7 @@ medio de pago opcional y registro de ventas con fecha.
 | POST | `/api/mercadopago/disconnect` | Desconecta la cuenta (`status: "revoked"`) (admin) |
 | GET | `/api/mercadopago/status` | Estado de la conexión (sin tokens) |
 | POST | `/api/mercadopago/setup` | Dirección del comercio + crear sucursal/caja si faltan (admin) |
-| POST | `/api/devices/sales` | **Equipo de balanza**: venta cerrada (pública, `X-Cle-Boitier` + `Authorization: Bearer`). Ver abajo. |
+| POST | `/api/devices/sales` | **Equipo de balanza**: venta cerrada (pública, `X-Clave-Equipo` + `Authorization: Bearer`). Ver abajo. |
 | POST | `/api/devices/heartbeat` | **Equipo de balanza**: "estoy vivo" (versión, WiFi, ventas pendientes) |
 | GET / POST | `/api/devices` | Equipos del comercio + últimas ventas recibidas · `{ key, code, label? }` vincula un equipo (admin) |
 | DELETE | `/api/devices/:id` | Desvincula el equipo (admin) |
@@ -152,11 +152,37 @@ Un ESP32 + WiFi enchufado al RS-232 de la balanza: al cerrar una venta (doble TO
   se graban en el firmware. En la base solo quedan los SHA-256.
 - **Vinculación**: el admin carga clave + código en *Configuración → Equipos* (o escanea el QR). Las ventas que el
   equipo mandó antes se suman al vincularlo, con su hora original.
-- **Idempotencia**: por (equipo, `id_evenement`). Reenvío → 200 `doublon`. Mismo id con otro ticket (contador
+- **Idempotencia**: por (equipo, `id_evento`). Reenvío → 200 `duplicada`. Mismo id con otro ticket (contador
   reiniciado) → se guarda como `<id>~<hash>`.
-- **Hora de la venta**: `horodatage_boitier` si está entre recepción − 30 días y recepción + 5 min; si no, la de recepción.
-- `ticket_brut` y el JSON completo se guardan siempre (tabla `device_sales`), aunque no se haya podido decodificar.
-- Respuestas (en francés, las lee el firmware): `200 enregistree|doublon` · `400 json_invalide` · `401 non_autorise` · `500 erreur_serveur`.
+- **Hora de la venta**: `fecha_hora_equipo` si está entre recepción − 30 días y recepción + 5 min; si no, la de recepción.
+- `ticket_crudo` y el JSON completo se guardan siempre (tabla `device_sales`), aunque no se haya podido decodificar.
+- Respuestas (las lee el firmware): `200 registrada|duplicada` · `400 json_invalido` · `401 no_autorizado` · `500 error_servidor`.
+
+Cuerpo que manda el equipo (todo en español; los campos de `venta` pueden venir `null` si no se pudo decodificar):
+
+```json
+{
+  "version": 1,
+  "evento": "venta_cerrada",
+  "id_evento": "K7RM2QXA-000123",
+  "equipo": { "clave": "K7RM2QXA", "firmware": "1.0.0", "modelo_balanza": "Kretz Novel Eco 2" },
+  "fecha_hora_equipo": "2026-11-15T17:02:11-03:00",
+  "venta": {
+    "numero_ticket": "0012",
+    "fecha_balanza": "14/11/26 18:05",
+    "cantidad_articulos": 2,
+    "total": 1518.00,
+    "articulos": [
+      { "cantidad": 0.515, "unidad": "kg", "precio_unitario": 1200.00, "subtotal": 618.00 },
+      { "cantidad": 1.000, "unidad": "kg", "precio_unitario": 900.00, "subtotal": 900.00 }
+    ]
+  },
+  "ticket_crudo": "texto exacto que manda la balanza, líneas separadas por \n"
+}
+```
+
+Heartbeat (`POST /api/devices/heartbeat`, cada `intervalo_s`): `{ version, equipo: { clave, firmware, modelo_balanza }, rssi, ip_local, ventas_pendientes, segundos_encendido }`
+→ `{ ok, hora_servidor, intervalo_s, equipo_vinculado }`. Más adelante puede traer `ajustes` / `actualizacion`: el firmware ignora los campos que no conoce.
 
 ## Atajos de teclado (Caja)
 
