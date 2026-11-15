@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { handleError, requireUser } from "@/lib/auth";
+import { isScaleKgLine, scaleInsights, type ScaleLine } from "@/lib/scaleInsights";
 import { DATE_RE, addDays, dateKeyAR, daysBetween, rangeAR, todayAR } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,7 @@ const r3 = (n: number) => Math.round(n * 1000) / 1000;
 /**
  * GET /api/reports?from=AAAA-MM-DD&to=AAAA-MM-DD   (solo admin, máx. 366 días)
  * Totales, ventas por día, por medio de pago, por cajero, por hora y ranking de productos.
+ * `scale`: ventas de balanza sin producto, agrupadas por precio por kilo, con el producto deducido.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -35,6 +37,7 @@ export async function GET(req: NextRequest) {
     const byPayment: Record<string, number> = {};
     const byCashier = new Map<string, { name: string; count: number; total: number }>();
     const products = new Map<string, { code: string; name: string; unit: string; quantity: number; total: number }>();
+    const scaleLines: ScaleLine[] = [];
     let total = 0, totalKg = 0, totalUnits = 0;
 
     for (const s of completed) {
@@ -58,6 +61,7 @@ export async function GET(req: NextRequest) {
 
       for (const i of s.items) {
         const q = Number(i.quantity);
+        if (isScaleKgLine(i)) scaleLines.push({ createdAt: s.createdAt, unitPrice: Number(i.unitPrice), quantity: q, subtotal: Number(i.subtotal) });
         if (i.unit === "KG") totalKg += q; else if (i.productId !== null) totalUnits += q;
         const p = products.get(i.productCode) ?? { code: i.productCode, name: i.productName, unit: i.unit, quantity: 0, total: 0 };
         p.quantity += q;
@@ -83,6 +87,7 @@ export async function GET(req: NextRequest) {
         .sort((a, b) => b.total - a.total)
         .slice(0, 20)
         .map((p) => ({ ...p, quantity: r3(p.quantity), total: r2(p.total) })),
+      scale: await scaleInsights(scaleLines),
     });
   } catch (e) {
     return handleError(e);

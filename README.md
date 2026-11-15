@@ -173,13 +173,15 @@ Cuerpo que manda el equipo (todo en español; los campos de `venta` pueden venir
     "cantidad_articulos": 2,
     "total": 1518.00,
     "articulos": [
-      { "cantidad": 0.515, "unidad": "kg", "precio_unitario": 1200.00, "subtotal": 618.00 },
+      { "cantidad": 0.515, "unidad": "kg", "precio_unitario": 1200.00, "subtotal": 618.00, "plu": "0012" },
       { "cantidad": 1.000, "unidad": "kg", "precio_unitario": 900.00, "subtotal": 900.00 }
     ]
   },
   "ticket_crudo": "texto exacto que manda la balanza, líneas separadas por \n"
 }
 ```
+
+`plu` (opcional, por artículo): si la balanza lo informa y coincide con el código de un producto, la línea queda ligada a ese producto (nombre, ranking y descuento de la "Cantidad ingresada"). Sin `plu`, la línea se guarda como `BAL-<precio>` y el Reporte deduce el producto por el precio por kilo que tenía en ese momento.
 
 Heartbeat (`POST /api/devices/heartbeat`, cada `intervalo_s`): `{ version, equipo: { clave, firmware, modelo_balanza }, rssi, ip_local, ventas_pendientes, segundos_encendido }`
 → `{ ok, hora_servidor, intervalo_s, equipo_vinculado }`. Más adelante puede traer `ajustes` / `actualizacion`: el firmware ignora los campos que no conoce.

@@ -118,6 +118,29 @@ tr.cancelled td { color: var(--muted); text-decoration: line-through; }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chips button { padding: 6px 12px; font-size: 14px; background: #fff; border: 1px solid var(--line); }
 
+/* Ventas: selector Día / Semana / Mes */
+.period-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.period-bar input[type="date"] { width: auto; font-size: 15px; padding: 8px 10px; }
+.period-bar .push { margin-left: auto; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: #fff; }
+.seg button { background: transparent; border-radius: 0; padding: 8px 14px; font-size: 15px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.active { background: var(--green); color: #fff; font-weight: 600; }
+.period-nav { display: inline-flex; align-items: center; gap: 6px; }
+.period-nav button { padding: 6px 12px; font-size: 18px; line-height: 1; }
+.period-nav strong { min-width: 170px; text-align: center; }
+/* Reporte: balanza por precio por kilo (mapa de calor por hora, un solo tono verde) */
+.small { font-size: 13px; }
+.scale-section .stat .small { margin-top: 4px; }
+.heat-wrap { overflow-x: auto; }
+.heat { border-collapse: separate; border-spacing: 2px; }
+.heat th, .heat td { padding: 6px 8px; }
+.heat .heat-name { min-width: 220px; }
+.heat th.heat-h { padding: 4px 0; text-align: center; font-size: 12px; font-weight: 400; color: var(--muted); min-width: 22px; }
+.heat td.heat-cell { padding: 0; height: 26px; min-width: 22px; border-radius: 4px; background: rgb(47 125 50 / var(--lvl)); }
+.heat td.heat-cell.empty { background: #f1f0ea; }
+button.linklike { background: none; padding: 0; color: var(--green-dark); text-decoration: underline; text-underline-offset: 2px; }
+
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
 @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
 
@@ -174,6 +197,9 @@ img, video { max-width: 100%; }
   .toolbar input, .toolbar select { font-size: 16px; }
   .toolbar > div { min-width: 0; flex: 1 1 140px; }
   .stat { min-width: 130px; }
+  .period-bar input[type="date"] { font-size: 16px; }
+  .period-bar .push { margin-left: 0; }
+  .period-nav { flex: 1 1 100%; justify-content: space-between; }
 
   .modal { padding: 16px; }
   button.big { font-size: 18px; padding: 14px; }

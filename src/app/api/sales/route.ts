@@ -4,24 +4,32 @@ import { prisma } from "@/lib/prisma";
 import { isPayment, toSaleDTO } from "@/lib/dto";
 import { applyStock, buildSaleLines } from "@/lib/sales";
 import { handleError, requireUser } from "@/lib/auth";
-import { DATE_RE, rangeAR, todayAR } from "@/lib/dates";
+import { DATE_RE, daysBetween, rangeAR, todayAR } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/sales?date=AAAA-MM-DD   (por defecto: hoy, hora Argentina)
+ * GET /api/sales?date=AAAA-MM-DD                 un día (por defecto: hoy, hora Argentina)
+ * GET /api/sales?from=AAAA-MM-DD&to=AAAA-MM-DD   un rango (semana, mes…; máx. 62 días)
  * Los cajeros solo pueden ver el día de hoy.
  */
 export async function GET(req: NextRequest) {
   try {
     const me = await requireUser();
     const today = todayAR();
-    const requested = req.nextUrl.searchParams.get("date") || today;
-    const date = me.role === "ADMIN" ? requested : today;
-    if (!DATE_RE.test(date)) {
+    const sp = req.nextUrl.searchParams;
+    const date = sp.get("date") || today;
+    let from = sp.get("from") || date;
+    let to = sp.get("to") || sp.get("from") || date;
+    if (me.role !== "ADMIN") from = to = today;
+    if (!DATE_RE.test(from) || !DATE_RE.test(to)) {
       return NextResponse.json({ error: "Fecha inválida (usar AAAA-MM-DD)" }, { status: 400 });
     }
-    const { start, end } = rangeAR(date, date);
+    const days = daysBetween(from, to).length;
+    if (days === 0 || days > 62) {
+      return NextResponse.json({ error: "Rango inválido (máximo 62 días)" }, { status: 400 });
+    }
+    const { start, end } = rangeAR(from, to);
 
     const sales = await prisma.sale.findMany({
       where: { createdAt: { gte: start, lt: end } },
@@ -44,7 +52,9 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json({
-      date,
+      date: from,
+      from,
+      to,
       count: completed.length,
       total: Number(total),
       totalKg: Number(totalKg),

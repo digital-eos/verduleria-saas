@@ -5,9 +5,11 @@ import { PAYMENT_LABELS, PAYMENT_METHODS, type Payment, type SaleDTO } from "@/l
 import { formatDateTime, formatKg, formatMoney, formatQty, formatUnitPrice } from "@/lib/format";
 import { apiFetch, useIsAdmin } from "@/components/SessionProvider";
 import SalesReport from "@/components/SalesReport";
+import { DATE_RE, type Period, periodRange, shiftPeriod, todayAR, weekdayOf } from "@/lib/dates";
 
 type Summary = {
-  date: string;
+  from: string;
+  to: string;
   count: number;
   total: number;
   totalKg: number;
@@ -16,7 +18,25 @@ type Summary = {
   sales: SaleDTO[];
 };
 
-const todayAR = () => new Date().toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const WEEKDAYS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+const PERIODS: { key: Period; label: string; total: string; empty: string; current: string }[] = [
+  { key: "dia", label: "Día", total: "Total del día", empty: "No hay ventas este día.", current: "Hoy" },
+  { key: "semana", label: "Semana", total: "Total de la semana", empty: "No hay ventas esta semana.", current: "Esta semana" },
+  { key: "mes", label: "Mes", total: "Total del mes", empty: "No hay ventas este mes.", current: "Este mes" },
+];
+const shortDate = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+const dayKey = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/Argentina/Buenos_Aires" });
+
+/** "Lunes 10/11/2026", "10/11 al 16/11/2026", "Noviembre 2026" */
+function periodTitle(period: Period, from: string, to: string) {
+  if (period === "mes") {
+    const m = MONTHS[Number(from.slice(5, 7)) - 1];
+    return `${m[0].toUpperCase()}${m.slice(1)} ${from.slice(0, 4)}`;
+  }
+  if (period === "semana") return `${shortDate(from)} al ${shortDate(to)}/${to.slice(0, 4)}`;
+  return `${WEEKDAYS[weekdayOf(from)]} ${shortDate(from)}/${from.slice(0, 4)}`;
+}
 const paymentLabel = (k: string) => (k === "NONE" ? "Sin especificar" : PAYMENT_LABELS[k as Payment] ?? k);
 
 type View = "dia" | "reporte";
@@ -45,7 +65,7 @@ export default function VentasPage() {
       <h1 style={{ marginBottom: 8 }}>Ventas</h1>
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={view === "dia"} className={view === "dia" ? "active" : ""} onClick={() => changeView("dia")}>
-          Del día
+          Ventas
         </button>
         <button role="tab" aria-selected={view === "reporte"} className={view === "reporte" ? "active" : ""} onClick={() => changeView("reporte")}>
           Reporte
@@ -57,15 +77,59 @@ export default function VentasPage() {
 }
 
 function DailySales({ isAdmin }: { isAdmin: boolean }) {
-  const [date, setDate] = useState(todayAR());
+  const today = todayAR();
+  const [period, setPeriod] = useState<Period>("dia");
+  const [anchor, setAnchor] = useState(today);
   const [data, setData] = useState<Summary | null>(null);
+  const [error, setError] = useState("");
   const [open, setOpen] = useState<number | null>(null);
+  const { from, to } = periodRange(period, anchor);
+  const meta = PERIODS.find((p) => p.key === period)!;
+  const isCurrent = from <= today && today <= to;
+
+  // El período elegido se refleja en la URL (?periodo=semana&fecha=2026-11-10)
+  useEffect(() => {
+    if (!isAdmin) return;
+    const sp = new URLSearchParams(window.location.search);
+    const p = sp.get("periodo");
+    if (p === "semana" || p === "mes") setPeriod(p);
+    const f = sp.get("fecha") ?? "";
+    if (DATE_RE.test(f) && f <= today) setAnchor(f);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function go(p: Period, a: string) {
+    const next = a > today ? today : a;
+    setPeriod(p);
+    setAnchor(next);
+    setOpen(null);
+    const url = new URL(window.location.href);
+    if (p === "dia") url.searchParams.delete("periodo"); else url.searchParams.set("periodo", p);
+    if (next === today) url.searchParams.delete("fecha"); else url.searchParams.set("fecha", next);
+    window.history.replaceState(null, "", url);
+  }
 
   async function load() {
-    const res = await apiFetch(`/api/sales?date=${date}`);
-    setData(await res.json());
+    setError("");
+    const res = await apiFetch(`/api/sales?from=${from}&to=${to}`);
+    const d = await res.json();
+    if (!res.ok) { setError(d.error ?? "Error"); return; }
+    setData(d);
   }
-  useEffect(() => { load(); }, [date]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [from, to]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Desglose por día (semana / mes)
+  const byDay = new Map<string, { count: number; total: number }>();
+  if (period !== "dia")
+    for (const s of data?.sales ?? []) {
+      if (s.status !== "COMPLETED") continue;
+      const k = dayKey(s.createdAt);
+      const d = byDay.get(k) ?? { count: 0, total: 0 };
+      d.count++;
+      d.total += s.total;
+      byDay.set(k, d);
+    }
+  const days = [...byDay.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  const bestDay = Math.max(1, ...days.map(([, d]) => d.total));
 
   async function patch(s: SaleDTO, body: object) {
     const res = await apiFetch(`/api/sales/${s.id}`, {
@@ -88,7 +152,7 @@ function DailySales({ isAdmin }: { isAdmin: boolean }) {
         ]);
     const csv = rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(";")).join("\n");
     const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" }));
-    const a = Object.assign(document.createElement("a"), { href: url, download: `ventas-${date}.csv` });
+    const a = Object.assign(document.createElement("a"), { href: url, download: from === to ? `ventas-${from}.csv` : `ventas-${from}_a_${to}.csv` });
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -97,27 +161,65 @@ function DailySales({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <>
-      <div className="row" style={{ marginBottom: 16, maxWidth: 520 }}>
-        {isAdmin ? (
-          <div>
-            <label>Día</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      {isAdmin ? (
+        <div className="period-bar">
+          <div className="seg" role="group" aria-label="Período">
+            {PERIODS.map((p) => (
+              <button key={p.key} className={period === p.key ? "active" : ""} aria-pressed={period === p.key} onClick={() => go(p.key, anchor)}>
+                {p.label}
+              </button>
+            ))}
           </div>
-        ) : (
+          <div className="period-nav">
+            <button aria-label="Período anterior" onClick={() => go(period, shiftPeriod(period, from, -1))}>‹</button>
+            <strong>{periodTitle(period, from, to)}</strong>
+            <button aria-label="Período siguiente" disabled={to >= today} onClick={() => go(period, shiftPeriod(period, from, 1))}>›</button>
+          </div>
+          <input type="date" aria-label="Ir a una fecha" value={anchor} max={today} onChange={(e) => e.target.value && go(period, e.target.value)} />
+          {!isCurrent && <button onClick={() => go(period, today)}>{meta.current}</button>}
+          <button className="push" onClick={exportCsv} disabled={!data?.sales.length}>
+            Exportar CSV
+          </button>
+        </div>
+      ) : (
+        <div className="row" style={{ marginBottom: 16, maxWidth: 520 }}>
           <h1 style={{ margin: 0 }}>Ventas de hoy</h1>
-        )}
-        <button style={{ flex: "0 0 auto" }} onClick={exportCsv} disabled={!data?.sales.length}>
-          Exportar CSV
-        </button>
-      </div>
+          <button style={{ flex: "0 0 auto" }} onClick={exportCsv} disabled={!data?.sales.length}>
+            Exportar CSV
+          </button>
+        </div>
+      )}
+      {error && <div className="msg error">{error}</div>}
 
       <div className="stats">
-        <div className="panel stat"><div className="muted">Total del día</div><div className="v">{formatMoney(data?.total ?? 0)}</div></div>
+        <div className="panel stat"><div className="muted">{meta.total}</div><div className="v">{formatMoney(data?.total ?? 0)}</div></div>
         <div className="panel stat"><div className="muted">Ventas</div><div className="v">{data?.count ?? 0}</div></div>
         <div className="panel stat"><div className="muted">Kilos vendidos</div><div className="v">{formatKg(data?.totalKg ?? 0)}</div></div>
         <div className="panel stat"><div className="muted">Unidades vendidas</div><div className="v">{data?.totalUnits ?? 0}</div></div>
         <div className="panel stat"><div className="muted">Ticket promedio</div><div className="v">{formatMoney(data?.count ? data.total / data.count : 0)}</div></div>
       </div>
+
+      {days.length > 0 && (
+        <section className="panel" style={{ marginBottom: 16 }}>
+          <h2>Por día</h2>
+          <table>
+            <tbody>
+              {days.map(([d, v]) => (
+                <tr key={d}>
+                  <td style={{ width: "45%" }}>
+                    <button className="linklike" title="Ver las ventas de este día" onClick={() => go("dia", d)}>
+                      {WEEKDAYS[weekdayOf(d)]} {shortDate(d)}
+                    </button>
+                    <div className="hbar"><span style={{ width: `${(v.total / bestDay) * 100}%` }} /></div>
+                  </td>
+                  <td className="num">{v.count} ventas</td>
+                  <td className="num">{formatMoney(v.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
 
       {payments.length > 0 && (
         <section className="panel" style={{ marginBottom: 16 }}>
@@ -208,7 +310,7 @@ function DailySales({ isAdmin }: { isAdmin: boolean }) {
             ))}
           </tbody>
         </table>
-        {data && data.sales.length === 0 && <p className="muted">No hay ventas este día.</p>}
+        {data && data.sales.length === 0 && <p className="muted">{meta.empty}</p>}
       </section>
     </>
   );

@@ -1,6 +1,8 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { Prisma, type Device, type DeviceSale, type SaleUnit } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { normalizeCode } from "@/lib/format";
+import { applyStock } from "@/lib/sales";
 
 /**
  * Equipos Libretita: ESP32 + WiFi enchufado a la salida RS-232 de la balanza (Kretz Novel Eco 2…).
@@ -141,6 +143,8 @@ export function pickSoldAt(deviceTime: Date | null, receivedAt: Date): Date {
 }
 
 type Line = {
+  /** PLU que mandó la balanza (si lo manda): se busca en el catálogo al crear la venta */
+  plu?: string | null;
   productCode: string;
   productName: string;
   unit: SaleUnit;
@@ -188,7 +192,9 @@ export function decodeSale(payload: unknown): {
     }
     const unit: SaleUnit = String(a.unidad ?? "kg").trim().toLowerCase().startsWith("k") ? "KG" : "UNIT";
     const price = Math.round(p * 100) / 100;
+    const plu = str(a.plu, 20);
     lines.push({
+      plu: plu ? normalizeCode(plu) : null,
       productCode: unit === "KG" ? `BAL-${price}` : `BAL-U-${price}`,
       productName: `Balanza · ${priceLabel(price)}/${unit === "KG" ? "kg" : "u."}`,
       unit,
@@ -219,13 +225,22 @@ export function decodeSale(payload: unknown): {
 async function materializeSale(tx: Prisma.TransactionClient, ds: Pick<DeviceSale, "id" | "payload" | "soldAt">) {
   const decoded = decodeSale(ds.payload);
   if (!decoded) return null;
-  const sale = await tx.sale.create({
-    data: {
-      createdAt: ds.soldAt,
-      total: decoded.total,
-      items: { create: decoded.lines.map((l) => ({ ...l, productId: null })) },
-    },
+
+  // Si la balanza mandó el PLU y existe en el catálogo, la línea queda ligada al producto
+  // (nombre real, ranking por producto y descuento de la "Cantidad ingresada").
+  const plus = [...new Set(decoded.lines.map((l) => l.plu).filter((p): p is string => !!p))];
+  const products = plus.length
+    ? new Map((await tx.product.findMany({ where: { code: { in: plus } } })).map((p) => [p.code, p]))
+    : new Map();
+  const items = decoded.lines.map(({ plu, ...l }) => {
+    const p = plu ? products.get(plu) : undefined;
+    return p ? { ...l, productId: p.id, productCode: p.code, productName: p.name, unit: p.unit } : { ...l, productId: null };
   });
+
+  const sale = await tx.sale.create({
+    data: { createdAt: ds.soldAt, total: decoded.total, items: { create: items } },
+  });
+  await applyStock(tx, items, -1);
   await tx.deviceSale.update({ where: { id: ds.id }, data: { saleId: sale.id } });
   return sale;
 }
