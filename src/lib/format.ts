@@ -49,3 +49,9 @@ export function parseQuantityIn(raw: unknown, unit: "KG" | "UNIT"): number | nul
 
 export const QUANTITY_IN_ERROR =
   "Cantidad ingresada inválida (número ≥ 0; entero si el producto se vende por unidad)";
+
+/** Texto opcional (marca, presentación): vacío -> null, máximo `max` caracteres. */
+export function optionalText(raw: unknown, max = 80): string | null {
+  const s = raw === null || raw === undefined ? "" : String(raw).trim().replace(/\s+/g, " ");
+  return s ? s.slice(0, max) : null;
+}

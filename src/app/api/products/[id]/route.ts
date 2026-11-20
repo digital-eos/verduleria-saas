@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toProductDTO } from "@/lib/dto";
-import { QUANTITY_IN_ERROR, normalizeCode, parseQuantityIn } from "@/lib/format";
+import { QUANTITY_IN_ERROR, normalizeCode, optionalText, parseQuantityIn } from "@/lib/format";
 import { HttpError, handleError, requireUser } from "@/lib/auth";
 import { audit, diff } from "@/lib/audit";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// PUT /api/products/:id  { code?, name?, price?, unit?, active?, quantityIn? (null o "" = sin valor) }   (solo admin)
+// PUT /api/products/:id  { code?, name?, brand?, presentation?, price?, unit?, active?, quantityIn? (null o "" = sin valor) }   (solo admin)
 export async function PUT(req: NextRequest, { params }: Ctx) {
   try {
     const me = await requireUser("ADMIN");
@@ -22,6 +22,8 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
 
     if (body.code !== undefined) plain.code = data.code = normalizeCode(String(body.code));
     if (body.name !== undefined) plain.name = data.name = String(body.name).trim();
+    if (body.brand !== undefined) plain.brand = data.brand = optionalText(body.brand);
+    if (body.presentation !== undefined) plain.presentation = data.presentation = optionalText(body.presentation, 40);
     if (body.active !== undefined) plain.active = data.active = Boolean(body.active);
     if (body.unit !== undefined) plain.unit = data.unit = body.unit === "UNIT" ? "UNIT" : "KG";
     if (body.price !== undefined) {
@@ -46,6 +48,8 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
       {
         code: before.code,
         name: before.name,
+        brand: before.brand,
+        presentation: before.presentation,
         unit: before.unit,
         active: before.active,
         price: before.price.toFixed(2),

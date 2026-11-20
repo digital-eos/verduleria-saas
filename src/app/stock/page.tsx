@@ -5,14 +5,26 @@ import type { ProductDTO, Unit } from "@/lib/dto";
 import { formatQty, formatUnitPrice, normalizeCode } from "@/lib/format";
 import { apiFetch } from "@/components/SessionProvider";
 import BarcodeScanner from "@/components/BarcodeScanner";
+import { fetchCatalog, suggestedName } from "@/components/catalogLookup";
 
-type Form = { id?: number; code: string; name: string; unit: Unit; price: string; quantityIn: string };
-const empty: Form = { code: "", name: "", unit: "KG", price: "", quantityIn: "" };
+type Form = {
+  id?: number;
+  code: string;
+  name: string;
+  brand: string;
+  presentation: string;
+  unit: Unit;
+  price: string;
+  quantityIn: string;
+};
+const empty: Form = { code: "", name: "", brand: "", presentation: "", unit: "KG", price: "", quantityIn: "" };
 
 const toForm = (p: ProductDTO): Form => ({
   id: p.id,
   code: p.code,
   name: p.name,
+  brand: p.brand ?? "",
+  presentation: p.presentation ?? "",
   unit: p.unit,
   price: String(p.price),
   quantityIn: p.quantityIn === null ? "" : String(p.quantityIn),
@@ -41,6 +53,16 @@ export default function StockPage() {
     } else if (res.status === 404) {
       setForm({ ...empty, code, unit: "UNIT" });
       setNotice("Producto nuevo: completá nombre y precio.");
+      const hit = await fetchCatalog(code);
+      if (hit) {
+        // solo si sigue siendo el mismo alta y no escribieron un nombre mientras tanto
+        setForm((f) =>
+          f.id || f.code !== code || f.name
+            ? f
+            : { ...f, name: suggestedName(hit), brand: hit.brand ?? "", presentation: hit.presentation ?? "" },
+        );
+        setNotice("Producto nuevo: nombre sugerido por el catálogo. Revisalo y completá el precio.");
+      }
     } else {
       setError("No se pudo buscar el código");
     }
@@ -65,6 +87,8 @@ export default function StockPage() {
     const body = {
       code: form.code,
       name: form.name,
+      brand: form.brand.trim() || null,
+      presentation: form.presentation.trim() || null,
       unit: form.unit,
       price: Number(form.price.replace(",", ".")),
       quantityIn: form.quantityIn.trim() === "" ? null : form.quantityIn.trim().replace(",", "."),
@@ -113,6 +137,20 @@ export default function StockPage() {
           <div className="field">
             <label>Nombre</label>
             <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+          </div>
+          <div className="row">
+            <div className="field">
+              <label>Marca <span className="muted">— opcional</span></label>
+              <input value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
+            </div>
+            <div className="field">
+              <label>Presentación <span className="muted">— opcional</span></label>
+              <input
+                value={form.presentation}
+                onChange={(e) => setForm({ ...form, presentation: e.target.value })}
+                placeholder="Ej: 500 g"
+              />
+            </div>
           </div>
           <div className="field">
             <label>Se vende por</label>
@@ -163,7 +201,7 @@ export default function StockPage() {
 
       <section className="panel">
         <div className="row" style={{ marginBottom: 12 }}>
-          <input placeholder="Buscar por nombre o código…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input placeholder="Buscar por nombre, marca o código…" value={q} onChange={(e) => setQ(e.target.value)} />
           <label style={{ flex: "0 0 auto", display: "flex", gap: 6, alignItems: "center", margin: 0 }}>
             <input
               type="checkbox"
@@ -189,7 +227,14 @@ export default function StockPage() {
             {products.map((p) => (
               <tr key={p.id} className={p.active ? "" : "cancelled"}>
                 <td>{p.code}</td>
-                <td>{p.name}</td>
+                <td>
+                  {p.name}
+                  {(p.brand || p.presentation) && (
+                    <div className="muted" style={{ fontSize: "0.85em" }}>
+                      {[p.brand, p.presentation].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                </td>
                 <td><span className="badge">{p.unit === "KG" ? "Por kilo" : "Por unidad"}</span></td>
                 <td className="num">{formatUnitPrice(p.price, p.unit)}</td>
                 <td className="num" style={p.quantityIn !== null && p.quantityIn < 0 ? { color: "var(--red)" } : undefined}>

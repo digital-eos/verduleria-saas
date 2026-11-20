@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { toProductDTO } from "@/lib/dto";
-import { QUANTITY_IN_ERROR, normalizeCode, parseQuantityIn } from "@/lib/format";
+import { QUANTITY_IN_ERROR, normalizeCode, optionalText, parseQuantityIn } from "@/lib/format";
 import { handleError, requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 
@@ -17,7 +17,13 @@ export async function GET(req: NextRequest) {
     const products = await prisma.product.findMany({
       where: {
         ...(all ? {} : { active: true }),
-        ...(q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { code: { contains: q } }] } : {}),
+        ...(q ? {
+              OR: [
+                { name: { contains: q, mode: "insensitive" } },
+                { brand: { contains: q, mode: "insensitive" } },
+                { code: { contains: q } },
+              ],
+            } : {}),
       },
       orderBy: { code: "asc" },
     });
@@ -27,7 +33,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/products  { code, name, price, unit: "KG" | "UNIT", quantityIn? }   (solo admin)
+// POST /api/products  { code, name, price, unit: "KG" | "UNIT", quantityIn?, brand?, presentation? }   (solo admin)
 export async function POST(req: NextRequest) {
   try {
     const me = await requireUser("ADMIN");
@@ -37,6 +43,8 @@ export async function POST(req: NextRequest) {
     const price = Number(body?.price);
     const unit = body?.unit === "UNIT" ? "UNIT" : "KG";
     const quantityIn = parseQuantityIn(body?.quantityIn, unit);
+    const brand = optionalText(body?.brand);
+    const presentation = optionalText(body?.presentation, 40);
 
     if (!code || !name || !Number.isFinite(price) || price <= 0) {
       return NextResponse.json({ error: "Código, nombre y precio (> 0) son obligatorios" }, { status: 400 });
@@ -51,12 +59,14 @@ export async function POST(req: NextRequest) {
       data: {
         code,
         name,
+        brand,
+        presentation,
         unit,
         price: new Prisma.Decimal(price.toFixed(2)),
         quantityIn: quantityIn === null ? null : new Prisma.Decimal(quantityIn),
       },
     });
-    await audit(me, "PRODUCT_CREATE", "Product", product.id, { code, name, unit, price, quantityIn });
+    await audit(me, "PRODUCT_CREATE", "Product", product.id, { code, name, brand, presentation, unit, price, quantityIn });
     return NextResponse.json(toProductDTO(product), { status: 201 });
   } catch (e) {
     return handleError(e);

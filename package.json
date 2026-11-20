@@ -12,6 +12,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "node prisma/seed.mjs",
     "device:create": "node scripts/create-device.mjs",
+    "catalog:import-sepa": "node scripts/import-sepa.mjs",
     "db:studio": "prisma studio"
   },
   "dependencies": {

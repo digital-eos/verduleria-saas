@@ -19,6 +19,8 @@ export type ProductDTO = {
   id: number;
   code: string;
   name: string;
+  brand: string | null;
+  presentation: string | null;
   unit: Unit;
   price: number;
   /** "Cantidad ingresada" (kg o unidades), opcional */
@@ -50,6 +52,8 @@ export const toProductDTO = (p: Product): ProductDTO => ({
   id: p.id,
   code: p.code,
   name: p.name,
+  brand: p.brand,
+  presentation: p.presentation,
   unit: p.unit,
   price: Number(p.price),
   quantityIn: p.quantityIn === null ? null : Number(p.quantityIn),

@@ -20,6 +20,8 @@ type CartLine = {
   quantity: number;
   /** Monto libre del modo Precio ("Producto no registrado") */
   free?: boolean;
+  /** Monto libre de un código escaneado que no está en Stock: el servidor busca el nombre en el catálogo */
+  ean?: string;
 };
 
 /** Modo de carga: cambia solo cómo se agrega al ticket (el ticket es uno solo) */
@@ -34,7 +36,8 @@ const FREE_NAME = "Producto no registrado";
 const KEYPAD = ["7", "8", "9", "4", "5", "6", "1", "2", "3", "00", "0", ","];
 
 /** Lo que se manda al servidor por cada línea del ticket */
-const toPayload = (l: CartLine) => (l.free ? { amount: l.price } : { code: l.code, quantity: l.quantity });
+const toPayload = (l: CartLine) =>
+  l.free ? { amount: l.price, ...(l.ean ? { ean: l.ean } : {}) } : { code: l.code, quantity: l.quantity };
 
 const CART_KEY = "verduleria.cart.v2";
 /** Cobro QR en curso: si se recarga la página, se retoma (no se pierde un pago) */
@@ -167,9 +170,12 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
     amountRef.current?.focus();
   }
 
-  function pushFree(price: number) {
-    setCart((c) => [...c, { key: crypto.randomUUID(), code: "S/C", name: FREE_NAME, unit: "UNIT", price, quantity: 1, free: true }]);
-    setMessage({ type: "ok", text: `+ ${FREE_NAME} · ${formatMoney(price)}` });
+  function pushFree(price: number, name = FREE_NAME, ean?: string) {
+    setCart((c) => [
+      ...c,
+      { key: crypto.randomUUID(), code: ean ?? "S/C", name, unit: "UNIT", price, quantity: 1, free: true, ean },
+    ]);
+    setMessage({ type: "ok", text: `+ ${name} · ${formatMoney(price)}` });
   }
 
   /** Modo Precio: agrega el monto como "Producto no registrado" */
@@ -248,7 +254,7 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
   function addLine(p: ProductDTO, quantity: number) {
     setCart((c) => {
       // Si es por unidad y ya está en el ticket, se suma a la misma línea
-      const existing = p.unit === "UNIT" ? c.find((l) => l.code === p.code) : undefined;
+      const existing = p.unit === "UNIT" ? c.find((l) => !l.free && l.code === p.code) : undefined;
       if (existing) {
         return c.map((l) => (l === existing ? { ...l, quantity: l.quantity + quantity } : l));
       }
@@ -387,7 +393,7 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
       const updated = data as ProductDTO;
       setProduct(updated);
       // El ticket en curso se cobra al precio actual: lo reflejamos
-      setCart((c) => c.map((l) => (l.code === updated.code ? { ...l, price: updated.price } : l)));
+      setCart((c) => c.map((l) => (!l.free && l.code === updated.code ? { ...l, price: updated.price } : l)));
       setPriceInput(null);
       setMessage({ type: "ok", text: `Precio de ${updated.name} actualizado: ${formatUnitPrice(updated.price, updated.unit)}` });
       setTimeout(() => qtyRef.current?.focus());
@@ -886,8 +892,8 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
           isAdmin={isAdmin}
           freeName={FREE_NAME}
           onCreated={(p) => void onQuickCreated(p)}
-          onSellFree={(price) => {
-            pushFree(price);
+          onSellFree={(price, name) => {
+            pushFree(price, name, name ? quickAdd.code : undefined);
             closeQuickAdd();
           }}
           onCancel={closeQuickAdd}

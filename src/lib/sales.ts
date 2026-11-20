@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { HttpError, type AuthUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { normalizeCode } from "@/lib/format";
+import { findInCatalog, gtinKey } from "@/lib/catalog";
+import { suggestedName } from "@/lib/catalogName";
 
 /** Línea de monto libre (modo Precio de la caja): no tiene producto asociado */
 export const FREE_ITEM_CODE = "S/C";
@@ -31,9 +33,11 @@ export type SaleLineJSON = {
 };
 
 /**
- * Valida el ticket que manda el navegador: `[{ code, quantity } | { amount }]`.
+ * Valida el ticket que manda el navegador: `[{ code, quantity } | { amount, ean? }]`.
  * - `{ code, quantity }`: el precio SIEMPRE se toma de la base (no del navegador).
  * - `{ amount }`: monto libre del modo Precio ("Producto no registrado"), sin producto.
+ *   Con `ean` (código escaneado que no está en Stock): si está en el catálogo de Argentina, la línea
+ *   queda con ese código y el nombre del catálogo (tomado de la base, no del navegador).
  * Calcula subtotales y total. Tira HttpError(400) con un mensaje claro si algo no cierra.
  * Las líneas conservan el orden del ticket.
  */
@@ -41,16 +45,22 @@ export async function buildSaleLines(rawItems: unknown): Promise<{ lines: SaleLi
   const list: unknown[] = Array.isArray(rawItems) ? rawItems : [];
   if (list.length === 0) throw new HttpError(400, "El ticket está vacío");
 
-  type Parsed = { kind: "product"; code: string; quantity: number } | { kind: "free"; amount: Prisma.Decimal };
+  type Parsed =
+    | { kind: "product"; code: string; quantity: number }
+    | { kind: "free"; amount: Prisma.Decimal; ean: string | null };
   const parsed: Parsed[] = [];
   const items: { code: string; quantity: number }[] = [];
-  for (const it of list as { code?: unknown; quantity?: unknown; amount?: unknown }[]) {
+  for (const it of list as { code?: unknown; quantity?: unknown; amount?: unknown; ean?: unknown }[]) {
     if (it?.amount != null) {
       const amount = Number(it.amount);
       if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_FREE_AMOUNT) {
         throw new HttpError(400, `Monto inválido: ${JSON.stringify(it.amount)}`);
       }
-      parsed.push({ kind: "free", amount: new Prisma.Decimal(amount.toFixed(2)) });
+      parsed.push({
+        kind: "free",
+        amount: new Prisma.Decimal(amount.toFixed(2)),
+        ean: it.ean == null ? null : gtinKey(String(it.ean)),
+      });
       continue;
     }
     const code = normalizeCode(String(it?.code ?? ""));
@@ -76,12 +86,16 @@ export async function buildSaleLines(rawItems: unknown): Promise<{ lines: SaleLi
     );
   }
 
+  const eans = [...new Set(parsed.flatMap((it) => (it.kind === "free" && it.ean ? [it.ean] : [])))];
+  const catalog = await findInCatalog(eans);
+
   const lines = parsed.map((it): SaleLine => {
     if (it.kind === "free") {
+      const hit = it.ean ? catalog.get(it.ean) : undefined;
       return {
         productId: null,
-        productCode: FREE_ITEM_CODE,
-        productName: FREE_ITEM_NAME,
+        productCode: hit ? hit.ean.replace(/^0+(?=\d{13}$)/, "") : FREE_ITEM_CODE,
+        productName: hit ? suggestedName(hit) : FREE_ITEM_NAME,
         unit: "UNIT",
         unitPrice: it.amount,
         quantity: new Prisma.Decimal(1),

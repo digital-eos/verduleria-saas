@@ -186,6 +186,20 @@ Cuerpo que manda el equipo (todo en español; los campos de `venta` pueden venir
 Heartbeat (`POST /api/devices/heartbeat`, cada `intervalo_s`): `{ version, equipo: { clave, firmware, modelo_balanza }, rssi, ip_local, ventas_pendientes, segundos_encendido }`
 → `{ ok, hora_servidor, intervalo_s, equipo_vinculado }`. Más adelante puede traer `ajustes` / `actualizacion`: el firmware ignora los campos que no conoce.
 
+## Catálogo de productos de Argentina (nombre al escanear)
+
+Al escanear un código de barras que no está en Stock (Caja o Stock), la app busca el nombre, la marca y la
+presentación en la tabla `catalog_products` y pre-llena el alta. El cajero (que no puede dar de alta) lo vende
+con ese nombre en vez de "Producto no registrado". `GET /api/catalog/:código` devuelve el resultado.
+
+- **Fuente principal: SEPA / Precios Claros** (Secretaría de Comercio, datos abiertos CC-BY 4.0). Bajá un
+  `sepa_<día>.zip` de https://datos.produccion.gob.ar/dataset/sepa-precios y cargalo:
+  `npm run catalog:import-sepa -- C:\Descargas\sepa_jueves.zip` (acepta también una URL, una carpeta o un
+  `productos.csv`). Con `--dry-run` solo lee y muestra ejemplos. Se puede volver a correr para actualizar.
+- **Respaldo: Open Food Facts**: si el código no está en la tabla, se consulta en vivo (3,5 s máx.) y lo
+  encontrado se guarda en la tabla (`source = "off"`). Sin internet, simplemente no se sugiere nombre.
+- Los códigos se guardan como GTIN de 14 dígitos (con ceros a la izquierda) y se valida el dígito verificador.
+
 ## Atajos de teclado (Caja)
 
 `Enter` avanzar · `F4` leer balanza · `F2` cobrar en efectivo · `Esc` cerrar ticket

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ProductDTO, Unit } from "@/lib/dto";
 import { apiFetch } from "@/components/SessionProvider";
+import { fetchCatalog, suggestedName, type CatalogHit } from "@/components/catalogLookup";
 
 /** Acepta "1500", "1500,50" o "1.500,50" */
 function parsePrice(raw: string): number | null {
@@ -16,7 +17,9 @@ function parsePrice(raw: string): number | null {
 /**
  * Paréntesis en la caja: se escaneó (o tipeó) un código que no existe.
  * - Admin: lo da de alta ahí mismo y vuelve a la venta con el producto en el ticket.
- * - Cajero: no puede crear productos; puede venderlo como "Producto no registrado".
+ * - Cajero: no puede crear productos; puede venderlo como "Producto no registrado"
+ *   (o con el nombre del catálogo, si el código está).
+ * Si es un código de barras, se busca en el catálogo de Argentina para pre-llenar nombre, marca y presentación.
  */
 export default function QuickProductModal({
   code,
@@ -30,12 +33,33 @@ export default function QuickProductModal({
   isAdmin: boolean;
   freeName: string;
   onCreated: (p: ProductDTO) => void;
-  onSellFree: (price: number) => void;
+  onSellFree: (price: number, name?: string) => void;
   onCancel: () => void;
 }) {
   // Código de barras largo = producto envasado (por unidad); PLU corto = por kilo
   const [unit, setUnit] = useState<Unit>(/^\d{8,}$/.test(code) ? "UNIT" : "KG");
   const [name, setName] = useState("");
+  const [brand, setBrand] = useState("");
+  const [presentation, setPresentation] = useState("");
+  const [catalog, setCatalog] = useState<CatalogHit | null>(null);
+  const [searching, setSearching] = useState(/^\d{8,14}$/.test(code));
+
+  useEffect(() => {
+    let alive = true;
+    void fetchCatalog(code).then((hit) => {
+      if (!alive) return;
+      setSearching(false);
+      if (!hit) return;
+      setCatalog(hit);
+      // no pisa lo que el usuario ya haya escrito mientras se buscaba
+      setName((v) => v || suggestedName(hit));
+      setBrand((v) => v || hit.brand || "");
+      setPresentation((v) => v || hit.presentation || "");
+    });
+    return () => {
+      alive = false;
+    };
+  }, [code]);
   const [price, setPrice] = useState("");
   const [quantityIn, setQuantityIn] = useState("");
   const [saving, setSaving] = useState(false);
@@ -46,7 +70,7 @@ export default function QuickProductModal({
     if (saving) return;
     const p = parsePrice(price);
     if (p === null) return setError("Precio inválido. Ej: 1500 o 1500,50");
-    if (!isAdmin) return onSellFree(p);
+    if (!isAdmin) return onSellFree(p, catalog ? suggestedName(catalog) : undefined);
     if (!name.trim()) return setError("Poné un nombre");
     setSaving(true);
     setError(null);
@@ -57,6 +81,8 @@ export default function QuickProductModal({
         body: JSON.stringify({
           code,
           name: name.trim(),
+          brand: brand.trim() || null,
+          presentation: presentation.trim() || null,
           unit,
           price: p,
           quantityIn: quantityIn.trim() === "" ? null : quantityIn.trim().replace(",", "."),
@@ -87,12 +113,29 @@ export default function QuickProductModal({
             : `Solo un administrador puede cargarlo. Podés venderlo como “${freeName}”.`}
         </p>
         {error && <div className="msg error">{error}</div>}
+        {searching && <p className="muted">Buscando el nombre en el catálogo…</p>}
+        {catalog && (
+          <div className="msg ok">
+            Catálogo: <b>{suggestedName(catalog)}</b>
+            {catalog.brand ? ` · ${catalog.brand}` : ""}
+          </div>
+        )}
 
         {isAdmin && (
           <>
             <div className="field">
               <label>Nombre</label>
               <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Yerba 1kg" />
+            </div>
+            <div className="row">
+              <div className="field">
+                <label>Marca <span className="muted">— opcional</span></label>
+                <input value={brand} onChange={(e) => setBrand(e.target.value)} />
+              </div>
+              <div className="field">
+                <label>Presentación <span className="muted">— opcional</span></label>
+                <input value={presentation} onChange={(e) => setPresentation(e.target.value)} placeholder="Ej: 500 g" />
+              </div>
             </div>
             <div className="field">
               <label>Se vende por</label>
