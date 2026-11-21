@@ -89,6 +89,43 @@ async function detectEncoding(file) {
 
 /** ean → { names: Map<nombre, veces>, brands: Map, pres: Map } */
 const catalog = new Map();
+/** Unidad normalizada: "Grs." → "g", "Kgm" → "kg", "Lts" → "l", "cc" → "ml", "Un" → "u" */
+const UNITS = [
+  [/^(kgs?|kgm|kilos?|kilogramos?)$/, "kg"],
+  [/^(g|gr|grs|gramos?|grm)$/, "g"],
+  [/^(l|lt|lts|litros?|ltr)$/, "l"],
+  [/^(ml|cc|cm3|mls)$/, "ml"],
+  [/^(un|u|uni|unid|unidad(es)?)$/, "u"],
+  [/^(mt|mts|m|metros?)$/, "m"],
+];
+function unitOf(raw) {
+  const u = String(raw ?? "").toLowerCase().replace(/[.\s]/g, "");
+  return UNITS.find(([re]) => re.test(u))?.[1] ?? null;
+}
+
+/** "0.800" + "gr." → "800 g" (un gramaje < 1 en realidad son kilos); "2.250" + "lt" → "2,25 l" */
+function formatPresentation(qtyRaw, unitRaw) {
+  let n = Number(String(qtyRaw ?? "").replace(",", "."));
+  let u = unitOf(unitRaw);
+  if (!Number.isFinite(n) || n <= 0 || !u) return null;
+  if (u === "g" && n < 1) n *= 1000;
+  if (u === "ml" && n < 1) n *= 1000;
+  if (u === "kg" && n < 1) [n, u] = [n * 1000, "g"];
+  if (u === "l" && n < 1) [n, u] = [n * 1000, "ml"];
+  if (u === "g" && n >= 1000 && n % 100 === 0) [n, u] = [n / 1000, "kg"];
+  if (u === "ml" && n >= 1000 && n % 100 === 0) [n, u] = [n / 1000, "l"];
+  const num = String(Math.round(n * 1000) / 1000).replace(".", ",");
+  return `${num} ${u}`;
+}
+
+/** Última medida que aparece en el nombre: "Nutrilon 4 Pouch X 1.2 kg" → "1,2 kg", "x750g" → "750 g" */
+function presentationFromName(name) {
+  const re = /(\d+(?:[.,]\d+)?)\s*(kgs?|kgm|kilos?|grs?\.?|gramos|g|lts?\.?|litros?|l|ml|cc|cm3)(?![a-z])/gi;
+  let last = null;
+  for (const m of name.matchAll(re)) last = m;
+  return last ? formatPresentation(last[1], last[2]) : null;
+}
+
 const bump = (m, k) => k && m.set(k, (m.get(k) ?? 0) + 1);
 const top = (m) => [...m.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
@@ -131,10 +168,13 @@ async function readProductos(file) {
     if (!e) catalog.set(key, (e = { names: new Map(), brands: new Map(), pres: new Map() }));
     if (e.names.size < 8 || e.names.has(name)) bump(e.names, name);
     if (cols.brand >= 0 && e.brands.size < 8) bump(e.brands, clean(f[cols.brand]));
-    if (cols.qty >= 0) {
-      const q = clean(f[cols.qty]).replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
-      const u = cols.unit >= 0 ? clean(f[cols.unit]).toLowerCase() : "";
-      if (q && Number(q) > 0 && e.pres.size < 8) bump(e.pres, `${q.replace(".", ",")} ${u}`.trim());
+    if (e.pres.size < 8) {
+      // Los campos de presentación vienen mal cargados seguido ("1 gr" en un paquete de 1 kg):
+      // primero se lee del nombre ("x 800 gr", "1.2 kg"), y si no, de los campos
+      const pres =
+        presentationFromName(name) ??
+        (cols.qty >= 0 ? formatPresentation(clean(f[cols.qty]), cols.unit >= 0 ? clean(f[cols.unit]) : "") : null);
+      bump(e.pres, pres);
     }
   }
   console.log(`  ${basename(file)}: ${rows.toLocaleString("es-AR")} filas, ${valid.toLocaleString("es-AR")} con código de barras`);
