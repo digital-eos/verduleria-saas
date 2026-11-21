@@ -9,9 +9,9 @@ export const dynamic = "force-dynamic";
 export async function POST(_req: Request, { params }: { params: Promise<{ orderId: string }> }) {
   if (!isMpQrEnabled()) return mpQrDisabledResponse(); // cobro QR apagado (FEATURE_MP_QR)
   try {
-    await requireUser();
+    const me = await requireUser();
     const { orderId } = await params;
-    const row = await findPaymentOrder(orderId);
+    const row = await findPaymentOrder(orderId, me.merchantId);
     return NextResponse.json(await cancelPaymentOrder(row));
   } catch (e) {
     return handleError(e);

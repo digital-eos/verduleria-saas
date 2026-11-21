@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { isMpQrEnabled } from "@/lib/payments";
+import MerchantNameForm from "./MerchantNameForm";
 
 // FEATURE_MP_QR se lee en cada pedido (no queda fijo en el build)
 export const dynamic = "force-dynamic";
@@ -38,6 +39,7 @@ export default function ConfiguracionPage() {
       <p className="muted" style={{ marginTop: -8 }}>
         Ajustes técnicos. Para cobrar usá la <Link href="/caja">Caja</Link>: ahí se lee la balanza y el escáner.
       </p>
+      <MerchantNameForm />
       {items.filter((i) => isMpQrEnabled() || i.href !== "/configuracion/pagos").map((i) => (
         <Link key={i.href} href={i.href} className="panel" style={{ display: "block", textDecoration: "none", color: "inherit", marginBottom: 12 }}>
           <h2 style={{ margin: "0 0 6px" }}>{i.title}</h2>

@@ -4,7 +4,16 @@
  */
 
 export type Role = "ADMIN" | "CASHIER";
-export type Session = { uid: number; username: string; name: string; role: Role; exp: number };
+/** `mid` = comercio del usuario. `pv` = falta verificar el email (solo puede ir a /verificar). */
+export type Session = {
+  uid: number;
+  mid: number;
+  username: string;
+  name: string;
+  role: Role;
+  pv?: boolean;
+  exp: number;
+};
 
 export const SESSION_COOKIE = "vs_session";
 export const SESSION_TTL = 60 * 60 * 12; // 12 horas
@@ -57,6 +66,8 @@ export async function verifySession(token?: string | null): Promise<Session | nu
     if (!ok) return null;
     const s = JSON.parse(new TextDecoder().decode(fromB64url(body))) as Session;
     if (typeof s.exp !== "number" || s.exp < Date.now() / 1000) return null;
+    // Sesiones de antes del multi-comercio (sin comercio): hay que volver a ingresar
+    if (typeof s.mid !== "number") return null;
     return s;
   } catch {
     return null;

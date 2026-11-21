@@ -39,10 +39,13 @@ export type SaleLineJSON = {
  * - `{ amount }`: monto libre del modo Precio ("Producto no registrado"), sin producto.
  *   Con `ean` (código escaneado que no está en Stock): si está en el catálogo de Argentina, la línea
  *   queda con ese código y el nombre del catálogo (tomado de la base, no del navegador).
- * Calcula subtotales y total. Tira HttpError(400) con un mensaje claro si algo no cierra.
+ * Solo productos del comercio `merchantId`. Calcula subtotales y total. Tira HttpError(400) con un mensaje claro si algo no cierra.
  * Las líneas conservan el orden del ticket.
  */
-export async function buildSaleLines(rawItems: unknown): Promise<{ lines: SaleLine[]; total: Prisma.Decimal }> {
+export async function buildSaleLines(
+  merchantId: number,
+  rawItems: unknown,
+): Promise<{ lines: SaleLine[]; total: Prisma.Decimal }> {
   const list: unknown[] = Array.isArray(rawItems) ? rawItems : [];
   if (list.length === 0) throw new HttpError(400, "El ticket está vacío");
 
@@ -76,7 +79,7 @@ export async function buildSaleLines(rawItems: unknown): Promise<{ lines: SaleLi
   }
 
   const codes = [...new Set(items.map((i) => i.code))];
-  const products = await prisma.product.findMany({ where: { code: { in: codes }, active: true } });
+  const products = await prisma.product.findMany({ where: { merchantId, code: { in: codes }, active: true } });
   const byCode = new Map(products.map((p) => [p.code, p]));
   const missing = codes.filter((c) => !byCode.has(c));
   if (missing.length) throw new HttpError(400, `Productos inexistentes: ${missing.join(", ")}`);
@@ -199,6 +202,7 @@ export async function setSaleStatus(
     saleId,
     { venta: saleId, total: Number(before.total), ...opts.details },
     opts.usernameOverride,
+    before.merchantId,
   );
   return true;
 }

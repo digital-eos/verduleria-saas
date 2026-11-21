@@ -2,18 +2,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { handleError, requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
-import { merchantIdFor } from "@/lib/merchant";
 import { MIN_PASSWORD, USERNAME_RE, hashPassword, normalizeUsername } from "@/lib/password";
 
 export const dynamic = "force-dynamic";
 
-const publicFields = { id: true, username: true, name: true, role: true, active: true, createdAt: true } as const;
+const publicFields = { id: true, username: true, name: true, email: true, role: true, active: true, createdAt: true } as const;
 
-// GET /api/users  (solo admin)
+// GET /api/users  (solo admin) — los usuarios de SU comercio
 export async function GET() {
   try {
-    await requireUser("ADMIN");
-    const users = await prisma.user.findMany({ select: publicFields, orderBy: [{ active: "desc" }, { name: "asc" }] });
+    const me = await requireUser("ADMIN");
+    const users = await prisma.user.findMany({
+      where: { merchantId: me.merchantId },
+      select: publicFields,
+      orderBy: [{ active: "desc" }, { name: "asc" }],
+    });
     return NextResponse.json(users);
   } catch (e) {
     return handleError(e);
@@ -38,12 +41,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `La clave debe tener al menos ${MIN_PASSWORD} caracteres` }, { status: 400 });
     }
     if (await prisma.user.findUnique({ where: { username } })) {
-      return NextResponse.json({ error: `El usuario "${username}" ya existe` }, { status: 409 });
+      // Los usuarios son únicos en toda Libretita (con eso se ingresa)
+      return NextResponse.json({ error: `El usuario "${username}" ya está tomado, probá con otro` }, { status: 409 });
     }
 
     const user = await prisma.user.create({
       // Mismo comercio que el admin que lo crea
-      data: { username, name, role, passwordHash: hashPassword(password), merchantId: await merchantIdFor(me) },
+      data: { username, name, role, passwordHash: hashPassword(password), merchantId: me.merchantId },
       select: publicFields,
     });
     await audit(me, "USER_CREATE", "User", user.id, { username, name, role });

@@ -14,7 +14,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     const me = await requireUser("ADMIN");
     const id = Number((await params).id);
     const body = await req.json().catch(() => ({}));
-    const before = await prisma.product.findUnique({ where: { id } });
+    const before = Number.isInteger(id) ? await prisma.product.findFirst({ where: { id, merchantId: me.merchantId } }) : null;
     if (!before) throw new HttpError(404, "Producto no encontrado");
 
     const data: Prisma.ProductUpdateInput = {};
@@ -42,7 +42,9 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
       data.quantityIn = quantityIn === null ? null : new Prisma.Decimal(quantityIn);
       plain.quantityIn = quantityIn === null ? null : String(quantityIn);
     }
-    if (plain.code && plain.code !== before.code && (await prisma.product.findUnique({ where: { code: plain.code as string } }))) {
+    if (plain.code && plain.code !== before.code && (await prisma.product.findUnique({
+        where: { merchantId_code: { merchantId: me.merchantId, code: plain.code as string } },
+      }))) {
       throw new HttpError(409, "Ese código ya está en uso");
     }
 
@@ -74,7 +76,7 @@ export async function DELETE(_req: NextRequest, { params }: Ctx) {
   try {
     const me = await requireUser("ADMIN");
     const id = Number((await params).id);
-    const p = await prisma.product.findUnique({ where: { id } });
+    const p = Number.isInteger(id) ? await prisma.product.findFirst({ where: { id, merchantId: me.merchantId } }) : null;
     if (!p) throw new HttpError(404, "Producto no encontrado");
     const used = await prisma.saleItem.count({ where: { productId: id } });
     if (used > 0) {

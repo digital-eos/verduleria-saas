@@ -77,15 +77,16 @@ async function providerFor(row: PaymentOrder): Promise<PaymentProvider> {
   }
 }
 
-export async function findPaymentOrder(orderId: string) {
+/** Cobro de un comercio (un comercio nunca ve ni toca los cobros de otro). */
+export async function findPaymentOrder(orderId: string, merchantId: number) {
   const row = await prisma.paymentOrder.findUnique({ where: { mpOrderId: orderId }, include: withSale });
-  if (!row) throw new HttpError(404, "No encontramos ese cobro");
+  if (!row || row.merchantId !== merchantId) throw new HttpError(404, "No encontramos ese cobro");
   return row;
 }
 
 /** Crea el cobro: valida el ticket contra la base, guarda la orden y pide el QR al proveedor. */
 export async function createPaymentOrder(me: AuthUser, rawItems: unknown): Promise<PaymentOrderDTO> {
-  const { lines, total } = await buildSaleLines(rawItems);
+  const { lines, total } = await buildSaleLines(me.merchantId, rawItems);
   if (total.lte(0)) throw new HttpError(400, "El total tiene que ser mayor a $ 0");
 
   const merchantId = await merchantIdFor(me);
@@ -153,11 +154,14 @@ class AlreadyFinalized extends Error {}
  */
 async function finalizePaidOrder(row: PaymentOrder) {
   if (row.saleId) return;
+  if (row.merchantId == null) throw new Error(`[payments] cobro ${row.id} sin comercio`);
+  const merchantId = row.merchantId;
   const lines = linesFromJSON(row.items as SaleLineJSON[]);
   try {
     await prisma.$transaction(async (tx) => {
       const sale = await tx.sale.create({
         data: {
+          merchantId,
           total: row.totalAmount,
           paymentMethod: "MERCADOPAGO",
           userId: row.userId,

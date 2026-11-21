@@ -16,7 +16,7 @@ const r3 = (n: number) => Math.round(n * 1000) / 1000;
  */
 export async function GET(req: NextRequest) {
   try {
-    await requireUser("ADMIN");
+    const me = await requireUser("ADMIN");
     const sp = req.nextUrl.searchParams;
     const to = DATE_RE.test(sp.get("to") ?? "") ? sp.get("to")! : todayAR();
     const from = DATE_RE.test(sp.get("from") ?? "") ? sp.get("from")! : addDays(to, -6);
@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     const { start, end } = rangeAR(from, to);
 
     const sales = await prisma.sale.findMany({
-      where: { createdAt: { gte: start, lt: end } },
+      where: { merchantId: me.merchantId, createdAt: { gte: start, lt: end } },
       include: { items: true, user: { select: { name: true } } },
     });
     const completed = sales.filter((s) => s.status === "COMPLETED");
@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
         .sort((a, b) => b.total - a.total)
         .slice(0, 20)
         .map((p) => ({ ...p, quantity: r3(p.quantity), total: r2(p.total) })),
-      scale: await scaleInsights(scaleLines),
+      scale: await scaleInsights(me.merchantId, scaleLines),
     });
   } catch (e) {
     return handleError(e);

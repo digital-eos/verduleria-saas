@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     const { start, end } = rangeAR(from, to);
 
     const sales = await prisma.sale.findMany({
-      where: { createdAt: { gte: start, lt: end } },
+      where: { merchantId: me.merchantId, createdAt: { gte: start, lt: end } },
       include: { items: true, user: { select: { name: true } } },
       orderBy: { createdAt: "desc" },
     });
@@ -85,11 +85,11 @@ export async function POST(req: NextRequest) {
     }
     const paymentMethod = isPayment(pm) ? pm : null;
 
-    const { lines, total } = await buildSaleLines(body?.items);
+    const { lines, total } = await buildSaleLines(me.merchantId, body?.items);
 
     const sale = await prisma.$transaction(async (tx) => {
       const created = await tx.sale.create({
-        data: { total, paymentMethod, userId: me.id, items: { create: lines } },
+        data: { merchantId: me.merchantId, total, paymentMethod, userId: me.id, items: { create: lines } },
         include: { items: true, user: { select: { name: true } } },
       });
       await applyStock(tx, lines, -1);

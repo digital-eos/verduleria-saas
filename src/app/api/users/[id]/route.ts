@@ -17,7 +17,8 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     const me = await requireUser("ADMIN");
     const id = Number((await params).id);
     const body = await req.json().catch(() => ({}));
-    const target = await prisma.user.findUnique({ where: { id } });
+    // Solo usuarios del mismo comercio
+    const target = Number.isInteger(id) ? await prisma.user.findFirst({ where: { id, merchantId: me.merchantId } }) : null;
     if (!target) throw new HttpError(404, "Usuario no encontrado");
 
     const data: Prisma.UserUpdateInput = {};
@@ -34,7 +35,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     }
     const losesAdmin = target.role === "ADMIN" && target.active && (data.role === "CASHIER" || data.active === false);
     if (losesAdmin) {
-      const admins = await prisma.user.count({ where: { role: "ADMIN", active: true } });
+      const admins = await prisma.user.count({ where: { merchantId: me.merchantId, role: "ADMIN", active: true } });
       if (admins <= 1) throw new HttpError(400, "Tiene que quedar al menos un administrador activo");
     }
 
@@ -56,7 +57,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     const user = await prisma.user.update({
       where: { id },
       data,
-      select: { id: true, username: true, name: true, role: true, active: true, createdAt: true },
+      select: { id: true, username: true, name: true, email: true, role: true, active: true, createdAt: true },
     });
 
     if (Object.keys(changes).length) await audit(me, "USER_UPDATE", "User", id, { usuario: target.username, ...changes });

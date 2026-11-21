@@ -7,20 +7,26 @@ const PUBLIC_EXACT = ["/"];
 // /api/devices/sales y /heartbeat: los llama el equipo de la balanza; se validan con su clave + secreto
 const PUBLIC = [
   "/login",
+  "/registro",
   "/api/auth/login",
-  "/api/auth/setup",
+  "/api/auth/register",
+  "/api/auth/verify",
+  "/api/auth/google",
+  "/api/auth/logout",
   "/api/webhooks",
   "/api/cron",
   "/api/devices/sales",
   "/api/devices/heartbeat",
 ];
+// Con el email sin verificar solo se puede ver esto (reenviar el email, salir)
+const UNVERIFIED_OK = ["/verificar", "/api/auth/me", "/api/auth/resend"];
 const ADMIN_PAGES = ["/stock", "/usuarios", "/dashboard", "/configuracion"];
 
 const matches = (path: string, list: string[]) => list.some((p) => path === p || path.startsWith(p + "/"));
 
 /**
  * Protege toda la app: sin sesión -> /login (o 401 en la API).
- * Cajeros no pueden entrar a las pantallas de administración.
+ * Email sin verificar -> solo /verificar. Cajeros no pueden entrar a las pantallas de administración.
  * (Las APIs vuelven a validar usuario y rol contra la base.)
  */
 export async function middleware(req: NextRequest) {
@@ -36,6 +42,13 @@ export async function middleware(req: NextRequest) {
     // Con la búsqueda: el QR del equipo lleva ?cle=…&code=… y tiene que sobrevivir al login
     url.searchParams.set("next", pathname + req.nextUrl.search);
     return NextResponse.redirect(url);
+  }
+
+  if (session.pv && !matches(pathname, UNVERIFIED_OK)) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Primero verificá tu email (revisá tu correo)" }, { status: 403 });
+    }
+    return NextResponse.redirect(new URL("/verificar", req.url));
   }
 
   if (session.role !== "ADMIN" && matches(pathname, ADMIN_PAGES)) {

@@ -13,23 +13,50 @@ enum Role {
   CASHIER // Cajero: caja y ventas del día
 }
 
+/// Usuario de un comercio. `username` es único en toda la app (con él se ingresa).
+/// El que registra el comercio tiene además `email` (o `googleId`) y tiene que verificarlo
+/// antes de usar la app. Los usuarios que crea un admin no tienen email: entran con usuario y clave.
 model User {
-  id           Int        @id @default(autoincrement())
-  username     String     @unique
-  name         String
-  passwordHash String
-  role         Role       @default(CASHIER)
-  active       Boolean    @default(true)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  sales        Sale[]
-  auditLogs    AuditLog[]
-  /// Comercio al que pertenece (hoy hay uno solo; null = se asigna el comercio por defecto)
-  merchantId   Int?
-  merchant     Merchant?  @relation(fields: [merchantId], references: [id], onDelete: SetNull)
+  id              Int          @id @default(autoincrement())
+  username        String       @unique
+  name            String
+  /// null = cuenta solo con Google
+  passwordHash    String?
+  role            Role         @default(CASHIER)
+  active          Boolean      @default(true)
+  email           String?      @unique
+  /// null con email cargado = falta verificar (no puede usar la app)
+  emailVerifiedAt DateTime?
+  googleId        String?      @unique
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  sales           Sale[]
+  auditLogs       AuditLog[]
+  emailTokens     EmailToken[]
+  merchantId      Int
+  merchant        Merchant     @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId])
 }
 
-/// El comercio (verdulería, almacén…). Nombre y dirección se usan para crear la sucursal en Mercado Pago.
+/// Enlace de verificación de email (se guarda solo el SHA-256 del token).
+model EmailToken {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique @map("token_hash")
+  /// "verify"
+  purpose   String
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("email_tokens")
+}
+
+/// El comercio (verdulería, almacén…): cada uno ve solo sus datos (productos, ventas, usuarios, equipos…).
+/// Nombre y dirección se usan para crear la sucursal en Mercado Pago.
 model Merchant {
   id            Int                 @id @default(autoincrement())
   name          String
@@ -43,6 +70,9 @@ model Merchant {
   createdAt     DateTime            @default(now()) @map("created_at")
   updatedAt     DateTime            @updatedAt @map("updated_at")
   users         User[]
+  products      Product[]
+  sales         Sale[]
+  auditLogs     AuditLog[]
   mpAccount     MercadoPagoAccount?
   paymentOrders PaymentOrder[]
   devices       Device[]
@@ -76,18 +106,22 @@ model MercadoPagoAccount {
 
 /// Registro de acciones sensibles: logins, cambios de precio, anulaciones, usuarios…
 model AuditLog {
-  id        Int      @id @default(autoincrement())
-  createdAt DateTime @default(now())
-  userId    Int?
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  username  String
-  action    String
-  entity    String
-  entityId  String?
-  details   Json?
+  id         Int       @id @default(autoincrement())
+  createdAt  DateTime  @default(now())
+  userId     Int?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  username   String
+  action     String
+  entity     String
+  entityId   String?
+  details    Json?
+  /// null = no se sabe de qué comercio (ej. ingreso fallido con un usuario inexistente)
+  merchantId Int?
+  merchant   Merchant? @relation(fields: [merchantId], references: [id], onDelete: Cascade)
 
   @@index([createdAt])
   @@index([action])
+  @@index([merchantId, createdAt])
 }
 
 enum SaleStatus {
@@ -110,11 +144,14 @@ enum PaymentMethod {
   OTHER // Otro
 }
 
-/// Catálogo de productos. `code` es el PLU (el mismo número que tiene cargado la balanza).
+/// Catálogo de productos de un comercio. `code` es el PLU (el mismo número que tiene cargado la balanza).
 /// `price` es el precio por kilo si unit = KG, o por unidad si unit = UNIT.
 model Product {
   id           Int        @id @default(autoincrement())
-  code         String     @unique
+  merchantId   Int
+  merchant     Merchant   @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  /// Único dentro del comercio (dos comercios pueden tener el mismo código)
+  code         String
   name         String
   /// Marca y presentación ("500 g", "2,25 lt"), opcionales; se sugieren desde el catálogo al escanear
   brand        String?
@@ -128,11 +165,15 @@ model Product {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   saleItems    SaleItem[]
+
+  @@unique([merchantId, code])
 }
 
 /// Una venta = un carrito validado. El medio de pago es opcional.
 model Sale {
   id            Int            @id @default(autoincrement())
+  merchantId    Int
+  merchant      Merchant       @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   createdAt     DateTime       @default(now())
   total         Decimal        @db.Decimal(12, 2)
   status        SaleStatus     @default(COMPLETED)
@@ -145,6 +186,7 @@ model Sale {
   deviceSale    DeviceSale?
 
   @@index([createdAt])
+  @@index([merchantId, createdAt])
 }
 
 /// Línea del carrito. Se guarda una "foto" del nombre, unidad y precio al momento de la venta,

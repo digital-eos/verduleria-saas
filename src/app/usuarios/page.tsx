@@ -5,7 +5,7 @@ import { apiFetch, useSession } from "@/components/SessionProvider";
 import { formatDateTime } from "@/lib/format";
 
 type Role = "ADMIN" | "CASHIER";
-type User = { id: number; username: string; name: string; role: Role; active: boolean; createdAt: string };
+type User = { id: number; username: string; name: string; email: string | null; role: Role; active: boolean; createdAt: string };
 type Form = { id?: number; username: string; name: string; role: Role; password: string };
 
 const empty: Form = { username: "", name: "", role: "CASHIER", password: "" };
@@ -134,7 +134,10 @@ export default function UsuariosPage() {
           <tbody>
             {users.map((u) => (
               <tr key={u.id} className={u.active ? "" : "cancelled"}>
-                <td>{u.username}</td>
+                <td>
+                  {u.username}
+                  {u.email && <div className="muted"><small>{u.email}</small></div>}
+                </td>
                 <td>{u.name}{u.username === me?.username && <span className="muted"> (vos)</span>}</td>
                 <td><span className="badge">{ROLE_LABEL[u.role]}</span></td>
                 <td className="muted">{formatDateTime(u.createdAt)}</td>

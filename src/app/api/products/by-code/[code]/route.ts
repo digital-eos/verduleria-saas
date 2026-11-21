@@ -9,9 +9,9 @@ export const dynamic = "force-dynamic";
 // GET /api/products/by-code/0001
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ code: string }> }) {
   try {
-    await requireUser();
+    const me = await requireUser();
     const code = normalizeCode(decodeURIComponent((await params).code));
-    const product = await prisma.product.findUnique({ where: { code } });
+    const product = await prisma.product.findUnique({ where: { merchantId_code: { merchantId: me.merchantId, code } } });
     if (!product || !product.active) {
       return NextResponse.json({ error: `No existe el producto ${code}` }, { status: 404 });
     }

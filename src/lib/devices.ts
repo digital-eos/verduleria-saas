@@ -222,7 +222,11 @@ export function decodeSale(payload: unknown): {
 }
 
 /** Crea la Sale (Ventas/Reportes) de una venta de equipo ya guardada, si se puede. */
-async function materializeSale(tx: Prisma.TransactionClient, ds: Pick<DeviceSale, "id" | "payload" | "soldAt">) {
+async function materializeSale(
+  tx: Prisma.TransactionClient,
+  ds: Pick<DeviceSale, "id" | "payload" | "soldAt">,
+  merchantId: number,
+) {
   const decoded = decodeSale(ds.payload);
   if (!decoded) return null;
 
@@ -230,7 +234,7 @@ async function materializeSale(tx: Prisma.TransactionClient, ds: Pick<DeviceSale
   // (nombre real, ranking por producto y descuento de la "Cantidad ingresada").
   const plus = [...new Set(decoded.lines.map((l) => l.plu).filter((p): p is string => !!p))];
   const products = plus.length
-    ? new Map((await tx.product.findMany({ where: { code: { in: plus } } })).map((p) => [p.code, p]))
+    ? new Map((await tx.product.findMany({ where: { merchantId, code: { in: plus } } })).map((p) => [p.code, p]))
     : new Map();
   const items = decoded.lines.map(({ plu, ...l }) => {
     const p = plu ? products.get(plu) : undefined;
@@ -238,7 +242,7 @@ async function materializeSale(tx: Prisma.TransactionClient, ds: Pick<DeviceSale
   });
 
   const sale = await tx.sale.create({
-    data: { createdAt: ds.soldAt, total: decoded.total, items: { create: items } },
+    data: { merchantId, createdAt: ds.soldAt, total: decoded.total, items: { create: items } },
   });
   await applyStock(tx, items, -1);
   await tx.deviceSale.update({ where: { id: ds.id }, data: { saleId: sale.id } });
@@ -295,7 +299,7 @@ export async function ingestDeviceSale(device: Device, inc: IncomingSale, receiv
           payload: inc.payload as Prisma.InputJsonObject,
         },
       });
-      const sale = device.merchantId ? await materializeSale(tx, ds) : null;
+      const sale = device.merchantId ? await materializeSale(tx, ds, device.merchantId) : null;
       return { status: "saved" as const, deviceSaleId: ds.id, saleId: sale?.id ?? null, decoded: !!decoded, idConflict };
     });
   } catch (e) {
@@ -326,7 +330,7 @@ export async function claimDevice(device: Device, merchantId: number, label: str
     let created = 0;
     for (const ds of pending) {
       await tx.deviceSale.update({ where: { id: ds.id }, data: { merchantId } });
-      if (await materializeSale(tx, ds)) created++;
+      if (await materializeSale(tx, ds, merchantId)) created++;
     }
     return { adopted: pending.length, salesCreated: created };
   }, { timeout: 30_000 });

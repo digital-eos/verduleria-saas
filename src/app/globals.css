@@ -314,3 +314,14 @@ button.primary.mp-btn { background: var(--mp-blue); }
 .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
 .keypad button { padding: 16px 0; font-size: 22px; font-weight: 600; background: #fff; border: 1px solid var(--line); }
 .keypad button.primary { background: var(--green); border-color: var(--green); color: #fff; font-size: 18px; }
+
+/* Registro / ingreso */
+.auth-or { display: flex; align-items: center; gap: 10px; margin: 16px 0; color: var(--muted); font-size: 14px; }
+.auth-or::before, .auth-or::after { content: ""; flex: 1; border-top: 1px solid #ddd; }
+.google-btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
+  padding: 12px; border: 1px solid #dadce0; border-radius: 8px; background: #fff; color: #3c4043;
+  font-weight: 600; text-decoration: none; font-size: 16px;
+}
+.google-btn:hover { background: #f8f9fa; }
+.auth-foot { text-align: center; margin-top: 16px; }

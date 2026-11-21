@@ -22,13 +22,13 @@ export const isScaleKgLine = (i: { productId: number | null; productCode: string
 type Segment = { productId: number; name: string; active: boolean; price: string; from: number; to: number };
 
 /** Precio vigente de cada producto por kilo a lo largo del tiempo, a partir del precio actual y la auditoría */
-async function priceHistory(): Promise<Map<string, Segment[]>> {
+async function priceHistory(merchantId: number): Promise<Map<string, Segment[]>> {
   const products = await prisma.product.findMany({
-    where: { unit: "KG" },
+    where: { merchantId, unit: "KG" },
     select: { id: true, name: true, price: true, active: true, createdAt: true },
   });
   const logs = await prisma.auditLog.findMany({
-    where: { action: "PRODUCT_UPDATE", entity: "Product" },
+    where: { merchantId, action: "PRODUCT_UPDATE", entity: "Product" },
     select: { entityId: true, createdAt: true, details: true },
     orderBy: { createdAt: "desc" },
   });
@@ -97,8 +97,8 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 const r3 = (n: number) => Math.round(n * 1000) / 1000;
 const peak = (arr: number[]) => (arr.some((v) => v > 0) ? arr.indexOf(Math.max(...arr)) : null);
 
-export async function scaleInsights(lines: ScaleLine[]): Promise<ScaleInsights> {
-  const history = lines.length ? await priceHistory() : new Map<string, Segment[]>();
+export async function scaleInsights(merchantId: number, lines: ScaleLine[]): Promise<ScaleInsights> {
+  const history = lines.length ? await priceHistory(merchantId) : new Map<string, Segment[]>();
   const groups = new Map<string, { price: number; kg: number; total: number; lines: number; matched: number; kgByHour: number[]; cand: Map<number, { id: number; name: string; lines: number }> }>();
   const kgByHour = Array<number>(24).fill(0);
   let kg = 0, total = 0;

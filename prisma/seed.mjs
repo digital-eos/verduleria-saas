@@ -16,8 +16,16 @@ const products = [
   { code: "0103", name: "Maple de huevos x30", unit: "UNIT", price: 7500 },
 ];
 
+// Se cargan en el primer comercio (o en uno de prueba si todavía no hay ninguno)
+const merchant =
+  (await prisma.merchant.findFirst({ orderBy: { id: "asc" } })) ??
+  (await prisma.merchant.create({ data: { name: "Comercio de prueba" } }));
 for (const p of products) {
-  await prisma.product.upsert({ where: { code: p.code }, update: {}, create: p });
+  await prisma.product.upsert({
+    where: { merchantId_code: { merchantId: merchant.id, code: p.code } },
+    update: {},
+    create: { ...p, merchantId: merchant.id },
+  });
 }
-console.log(`Seed OK: ${products.length} productos`);
+console.log(`Seed OK: ${products.length} productos en "${merchant.name}"`);
 await prisma.$disconnect();

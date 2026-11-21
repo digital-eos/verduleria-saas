@@ -15,7 +15,7 @@ const links = [
 export default function Nav() {
   const path = usePathname();
   const session = useSession();
-  if (path === "/" || path === "/login" || !session) return null;
+  if (["/", "/login", "/registro", "/verificar"].includes(path) || !session) return null;
 
   const isAdmin = session.role === "ADMIN";
 

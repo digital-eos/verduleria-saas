@@ -10,7 +10,9 @@ medio de pago opcional y registro de ventas con fecha.
 
 | Ruta         | Rol | Qué hace |
 |--------------|-----|----------|
-| `/login`     | —   | Ingreso. En el primer uso permite crear el administrador. |
+| `/login`     | —   | Ingreso con email o usuario (o con Google). |
+| `/registro`  | —   | Registro de un negocio nuevo: el que se registra queda como administrador. |
+| `/verificar` | —   | "Revisá tu correo": hasta confirmar el email no se puede usar la app. |
 | `/`          | —   | Página de presentación pública, con acceso a usuarios arriba a la derecha. |
 | `/caja`      | Todos | **Caja** (cobrar), 3 modos que cargan el mismo ticket: **Balanza** (código/nombre → peso o cantidad), **Scan** (cámara o lector USB) y **Precio** (teclado tipo calculadora: el monto entra como “Producto no registrado”). Un toque en el medio de pago (Efectivo, Débito, Mercado Pago = QR…) cobra directo (F2 = efectivo). |
 | `/ventas`    | Todos | Ventas del día (el admin puede elegir cualquier día), detalle, medio de pago, CSV. Solo el admin anula. Pestaña **Reporte** (admin, `/ventas?vista=reporte`): por rango, facturación por día y por hora, ranking de productos, medio de pago, cajero. `/dashboard` redirige acá. |
@@ -20,7 +22,9 @@ medio de pago opcional y registro de ventas con fecha.
 
 ## Usuarios y permisos
 
-- **Primer uso**: entrás a la app y te pide crear el usuario **administrador**. Después creás los cajeros en *Usuarios*.
+- **Multi-comercio**: cada negocio se registra en `/registro` (con Google o con email + enlace de verificación) y
+  queda como su administrador. Después crea sus cajeros y otros administradores en *Usuarios*. Cada comercio ve
+  solo sus productos, ventas, usuarios, equipos, cobros y auditoría (el catálogo de productos de Argentina es compartido).
 - **Cajero**: caja, búsqueda de productos, ventas del día y corrección del medio de pago del día.
 - **Admin**: todo lo anterior + precios/productos, anular ventas, ver cualquier fecha, reportes, usuarios y auditoría.
 - Sesión de 12 h en cookie firmada (`AUTH_SECRET`). Las claves se guardan hasheadas (scrypt).
@@ -37,7 +41,10 @@ medio de pago opcional y registro de ventas con fecha.
 | GET | `/api/products/by-code/:code` | Busca por PLU |
 | POST | `/api/sales` | `{ items: [{ code, quantity }], paymentMethod? }` → valida, calcula y guarda. Devuelve el total. `quantity` = kg o unidades (entero). |
 | GET | `/api/sales?date=AAAA-MM-DD` | Ventas del día + totales (cajero: solo hoy) |
-| POST | `/api/auth/login` · `/api/auth/logout` · `/api/auth/setup` | Sesión y primer administrador |
+| POST | `/api/auth/login` · `/api/auth/logout` | Sesión (login con email o usuario) |
+| POST | `/api/auth/register` · `/api/auth/resend` · GET `/api/auth/verify` | Registro de un comercio y verificación del email |
+| GET | `/api/auth/google` · `/api/auth/google/callback` | Ingreso / registro con Google |
+| GET/PUT | `/api/merchant` | Nombre del negocio |
 | GET/POST · PUT | `/api/users` · `/api/users/:id` | Usuarios (admin) |
 | GET | `/api/reports?from=&to=` | Reportes (admin) |
 | GET | `/api/audit?from=&to=&action=` | Auditoría (admin) |
@@ -115,7 +122,9 @@ y pegar la URL en `.env`.
 3. En **Settings → Environment Variables** agregá `AUTH_SECRET` (obligatoria, una clave larga y aleatoria:
    `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`).
 4. Deploy. El build corre `prisma migrate deploy`, así que las tablas se crean solas.
-5. Entrá a la URL **enseguida** y creá el administrador (la pantalla de primer uso solo aparece mientras no haya usuarios).
+5. Para el registro: `RESEND_API_KEY` + `EMAIL_FROM` (email de verificación), y opcional `GOOGLE_CLIENT_ID` +
+   `GOOGLE_CLIENT_SECRET` (botón de Google; redirect URI `https://<tu-dominio>/api/auth/google/callback`). Ver `.env.example`.
+6. Entrá a `/registro` y registrá tu negocio.
 
 ## Conexión con la balanza Systel Clipse / Croma
 

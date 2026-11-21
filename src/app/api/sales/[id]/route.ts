@@ -15,7 +15,9 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   try {
     const me = await requireUser();
     const id = Number((await params).id);
-    const sale = await prisma.sale.findUnique({ where: { id }, include });
+    const sale = Number.isInteger(id)
+      ? await prisma.sale.findFirst({ where: { id, merchantId: me.merchantId }, include })
+      : null;
     if (!sale) throw new HttpError(404, "Venta no encontrada");
     if (me.role !== "ADMIN" && dateKeyAR(sale.createdAt) !== todayAR()) {
       throw new HttpError(403, "Solo podés ver ventas del día");
@@ -36,7 +38,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     const me = await requireUser();
     const id = Number((await params).id);
     const body = await req.json().catch(() => ({}));
-    const before = await prisma.sale.findUnique({ where: { id } });
+    const before = Number.isInteger(id) ? await prisma.sale.findFirst({ where: { id, merchantId: me.merchantId } }) : null;
     if (!before) throw new HttpError(404, "Venta no encontrada");
 
     const data: Prisma.SaleUpdateInput = {};

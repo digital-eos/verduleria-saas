@@ -48,7 +48,10 @@ export default async function HomePage() {
             <Link href="/caja" className="btn-link primary">Ir a la caja</Link>
           </div>
         ) : (
-          <Link href="/login" className="btn-link primary">Ingresar</Link>
+          <div className="landing-user">
+            <Link href="/login" className="btn-link">Ingresar</Link>
+            <Link href="/registro" className="btn-link primary">Crear cuenta</Link>
+          </div>
         )}
       </header>
 
@@ -58,9 +61,14 @@ export default async function HomePage() {
           Cobrá más rápido, controlá precios y mirá cómo va el negocio desde un solo lugar.
           Pensado para almacenes, kioscos, verdulerías y todo negocio de barrio.
         </p>
-        <Link href={session ? "/caja" : "/login"} className="btn-link primary big-link">
-          {session ? "Ir a la caja" : "Ingresar al sistema"}
+        <Link href={session ? "/caja" : "/registro"} className="btn-link primary big-link">
+          {session ? "Ir a la caja" : "Registrá tu negocio gratis"}
         </Link>
+        {!session && (
+          <p className="muted">
+            ¿Ya tenés cuenta? <Link href="/login">Ingresá</Link>
+          </p>
+        )}
       </section>
 
       <section className="services">

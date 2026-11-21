@@ -4,6 +4,9 @@ import type { AuthUser } from "@/lib/auth";
 
 export type AuditAction =
   | "SETUP"
+  | "SIGNUP"
+  | "EMAIL_VERIFIED"
+  | "MERCHANT_UPDATE"
   | "LOGIN"
   | "LOGIN_FAILED"
   | "PRODUCT_CREATE"
@@ -25,6 +28,9 @@ export type AuditAction =
 
 export const AUDIT_LABELS: Record<AuditAction, string> = {
   SETUP: "Configuración inicial",
+  SIGNUP: "Comercio registrado",
+  EMAIL_VERIFIED: "Email verificado",
+  MERCHANT_UPDATE: "Datos del negocio cambiados",
   LOGIN: "Ingreso",
   LOGIN_FAILED: "Ingreso fallido",
   PRODUCT_CREATE: "Producto creado",
@@ -45,18 +51,21 @@ export const AUDIT_LABELS: Record<AuditAction, string> = {
   DEVICE_UNLINK: "Equipo de balanza desvinculado",
 };
 
+/** `user` lleva su comercio: el registro queda en la auditoría de ESE comercio. */
 export async function audit(
-  user: Pick<AuthUser, "id" | "username"> | null,
+  user: (Pick<AuthUser, "id" | "username"> & { merchantId?: number }) | null,
   action: AuditAction,
   entity: string,
   entityId: string | number | null,
   details?: Prisma.InputJsonValue,
   usernameOverride?: string,
+  merchantIdOverride?: number | null,
 ) {
   try {
     await prisma.auditLog.create({
       data: {
         userId: user?.id ?? null,
+        merchantId: merchantIdOverride ?? user?.merchantId ?? null,
         username: usernameOverride ?? user?.username ?? "-",
         action,
         entity,

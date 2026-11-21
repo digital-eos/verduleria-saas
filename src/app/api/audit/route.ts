@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // GET /api/audit?from=AAAA-MM-DD&to=AAAA-MM-DD&action=SALE_CANCEL  (solo admin)
 export async function GET(req: NextRequest) {
   try {
-    await requireUser("ADMIN");
+    const me = await requireUser("ADMIN");
     const sp = req.nextUrl.searchParams;
     const to = DATE_RE.test(sp.get("to") ?? "") ? sp.get("to")! : todayAR();
     const from = DATE_RE.test(sp.get("from") ?? "") ? sp.get("from")! : addDays(to, -6);
@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     const { start, end } = rangeAR(from, to);
 
     const logs = await prisma.auditLog.findMany({
-      where: { createdAt: { gte: start, lt: end }, ...(action ? { action } : {}) },
+      where: { merchantId: me.merchantId, createdAt: { gte: start, lt: end }, ...(action ? { action } : {}) },
       orderBy: { createdAt: "desc" },
       take: 500,
     });

@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
     const all = req.nextUrl.searchParams.get("all") === "1" && me.role === "ADMIN";
     const products = await prisma.product.findMany({
       where: {
+        merchantId: me.merchantId,
         ...(all ? {} : { active: true }),
         ...(q ? {
               OR: [
@@ -56,11 +57,12 @@ export async function POST(req: NextRequest) {
     if (quantityIn === undefined) {
       return NextResponse.json({ error: QUANTITY_IN_ERROR }, { status: 400 });
     }
-    if (await prisma.product.findUnique({ where: { code } })) {
+    if (await prisma.product.findUnique({ where: { merchantId_code: { merchantId: me.merchantId, code } } })) {
       return NextResponse.json({ error: `Ya existe un producto con el código ${code}` }, { status: 409 });
     }
     const product = await prisma.product.create({
       data: {
+        merchantId: me.merchantId,
         code,
         name,
         brand,
