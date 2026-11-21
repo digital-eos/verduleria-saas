@@ -120,7 +120,8 @@ model Product {
   brand        String?
   presentation String?
   unit         SaleUnit   @default(KG)
-  price        Decimal    @db.Decimal(12, 2)
+  /// null = todavía sin precio: se pide en la Caja al venderlo
+  price        Decimal?   @db.Decimal(12, 2)
   /// "Cantidad ingresada" (opcional): kilos si se vende por kilo, unidades si es por unidad.
   quantityIn   Decimal?   @db.Decimal(12, 3)
   active       Boolean    @default(true)

@@ -8,7 +8,7 @@ import { audit, diff } from "@/lib/audit";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-// PUT /api/products/:id  { code?, name?, brand?, presentation?, price?, unit?, active?, quantityIn? (null o "" = sin valor) }   (solo admin)
+// PUT /api/products/:id  { code?, name?, brand?, presentation?, price? (null = sin precio), unit?, active?, quantityIn? (null o "" = sin valor) }   (solo admin)
 export async function PUT(req: NextRequest, { params }: Ctx) {
   try {
     const me = await requireUser("ADMIN");
@@ -26,7 +26,10 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     if (body.presentation !== undefined) plain.presentation = data.presentation = optionalText(body.presentation, 40);
     if (body.active !== undefined) plain.active = data.active = Boolean(body.active);
     if (body.unit !== undefined) plain.unit = data.unit = body.unit === "UNIT" ? "UNIT" : "KG";
-    if (body.price !== undefined) {
+    if (body.price === null || (typeof body.price === "string" && body.price.trim() === "")) {
+      data.price = null;
+      plain.price = null;
+    } else if (body.price !== undefined) {
       const price = Number(body.price);
       if (!Number.isFinite(price) || price <= 0) throw new HttpError(400, "Precio inválido");
       data.price = new Prisma.Decimal(price.toFixed(2));
@@ -52,7 +55,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
         presentation: before.presentation,
         unit: before.unit,
         active: before.active,
-        price: before.price.toFixed(2),
+        price: before.price === null ? null : before.price.toFixed(2),
         quantityIn: before.quantityIn === null ? null : String(Number(before.quantityIn)),
       },
       plain,

@@ -34,7 +34,8 @@ export type SaleLineJSON = {
 
 /**
  * Valida el ticket que manda el navegador: `[{ code, quantity } | { amount, ean? }]`.
- * - `{ code, quantity }`: el precio SIEMPRE se toma de la base (no del navegador).
+ * - `{ code, quantity, price? }`: el precio SIEMPRE se toma de la base (no del navegador). Solo si el
+ *   producto todavía no tiene precio se usa `price`, el que se tipeó en la Caja al cobrarlo (obligatorio).
  * - `{ amount }`: monto libre del modo Precio ("Producto no registrado"), sin producto.
  *   Con `ean` (código escaneado que no está en Stock): si está en el catálogo de Argentina, la línea
  *   queda con ese código y el nombre del catálogo (tomado de la base, no del navegador).
@@ -46,11 +47,11 @@ export async function buildSaleLines(rawItems: unknown): Promise<{ lines: SaleLi
   if (list.length === 0) throw new HttpError(400, "El ticket está vacío");
 
   type Parsed =
-    | { kind: "product"; code: string; quantity: number }
+    | { kind: "product"; code: string; quantity: number; price: number | null }
     | { kind: "free"; amount: Prisma.Decimal; ean: string | null };
   const parsed: Parsed[] = [];
   const items: { code: string; quantity: number }[] = [];
-  for (const it of list as { code?: unknown; quantity?: unknown; amount?: unknown; ean?: unknown }[]) {
+  for (const it of list as { code?: unknown; quantity?: unknown; amount?: unknown; ean?: unknown; price?: unknown }[]) {
     if (it?.amount != null) {
       const amount = Number(it.amount);
       if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_FREE_AMOUNT) {
@@ -68,8 +69,10 @@ export async function buildSaleLines(rawItems: unknown): Promise<{ lines: SaleLi
     if (!code || !Number.isFinite(quantity) || quantity <= 0 || quantity > 1000) {
       throw new HttpError(400, `Línea inválida: ${JSON.stringify(it)}`);
     }
+    const typed = it?.price == null ? null : Number(it.price);
+    const price = typed !== null && Number.isFinite(typed) && typed > 0 && typed <= MAX_FREE_AMOUNT ? typed : null;
     items.push({ code, quantity });
-    parsed.push({ kind: "product", code, quantity });
+    parsed.push({ kind: "product", code, quantity, price });
   }
 
   const codes = [...new Set(items.map((i) => i.code))];
@@ -104,14 +107,16 @@ export async function buildSaleLines(rawItems: unknown): Promise<{ lines: SaleLi
     }
     const { code, quantity } = it;
     const p = byCode.get(code)!;
+    const unitPrice = p.price ?? (it.price === null ? null : new Prisma.Decimal(it.price.toFixed(2)));
+    if (unitPrice === null) throw new HttpError(400, `Falta el precio de ${p.name} (${p.code})`);
     const qty = new Prisma.Decimal(quantity.toFixed(3));
-    const subtotal = p.price.times(qty).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+    const subtotal = unitPrice.times(qty).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
     return {
       productId: p.id,
       productCode: p.code,
       productName: p.name,
       unit: p.unit,
-      unitPrice: p.price,
+      unitPrice,
       quantity: qty,
       subtotal,
     };

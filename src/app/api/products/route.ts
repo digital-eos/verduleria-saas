@@ -33,21 +33,25 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/products  { code, name, price, unit: "KG" | "UNIT", quantityIn?, brand?, presentation? }   (solo admin)
+// POST /api/products  { code, name, price? (vacío/null = sin precio), unit: "KG" | "UNIT", quantityIn?, brand?, presentation? }   (solo admin)
 export async function POST(req: NextRequest) {
   try {
     const me = await requireUser("ADMIN");
     const body = await req.json().catch(() => null);
     const code = normalizeCode(String(body?.code ?? ""));
     const name = String(body?.name ?? "").trim();
-    const price = Number(body?.price);
+    const noPrice = body?.price === undefined || body?.price === null || String(body.price).trim() === "";
+    const price = noPrice ? null : Number(body.price);
     const unit = body?.unit === "UNIT" ? "UNIT" : "KG";
     const quantityIn = parseQuantityIn(body?.quantityIn, unit);
     const brand = optionalText(body?.brand);
     const presentation = optionalText(body?.presentation, 40);
 
-    if (!code || !name || !Number.isFinite(price) || price <= 0) {
-      return NextResponse.json({ error: "Código, nombre y precio (> 0) son obligatorios" }, { status: 400 });
+    if (!code || !name) {
+      return NextResponse.json({ error: "Código y nombre son obligatorios" }, { status: 400 });
+    }
+    if (price !== null && (!Number.isFinite(price) || price <= 0)) {
+      return NextResponse.json({ error: "Precio inválido (tiene que ser > 0, o vacío para ponerlo al cobrar)" }, { status: 400 });
     }
     if (quantityIn === undefined) {
       return NextResponse.json({ error: QUANTITY_IN_ERROR }, { status: 400 });
@@ -62,7 +66,7 @@ export async function POST(req: NextRequest) {
         brand,
         presentation,
         unit,
-        price: new Prisma.Decimal(price.toFixed(2)),
+        price: price === null ? null : new Prisma.Decimal(price.toFixed(2)),
         quantityIn: quantityIn === null ? null : new Prisma.Decimal(quantityIn),
       },
     });

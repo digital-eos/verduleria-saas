@@ -10,6 +10,8 @@ import { apiFetch, useIsAdmin } from "@/components/SessionProvider";
 import CameraScanner from "@/components/CameraScanner";
 import MercadoPagoQrModal from "@/components/MercadoPagoQrModal";
 import QuickProductModal from "@/components/QuickProductModal";
+import PricePromptModal from "@/components/PricePromptModal";
+import { beep } from "@/lib/beep";
 
 type CartLine = {
   key: string;
@@ -22,6 +24,8 @@ type CartLine = {
   free?: boolean;
   /** Monto libre de un código escaneado que no está en Stock: el servidor busca el nombre en el catálogo */
   ean?: string;
+  /** Producto sin precio en Stock: precio tipeado al cobrar (se manda al servidor) */
+  typedPrice?: boolean;
 };
 
 /** Modo de carga: cambia solo cómo se agrega al ticket (el ticket es uno solo) */
@@ -37,7 +41,9 @@ const KEYPAD = ["7", "8", "9", "4", "5", "6", "1", "2", "3", "00", "0", ","];
 
 /** Lo que se manda al servidor por cada línea del ticket */
 const toPayload = (l: CartLine) =>
-  l.free ? { amount: l.price, ...(l.ean ? { ean: l.ean } : {}) } : { code: l.code, quantity: l.quantity };
+  l.free
+    ? { amount: l.price, ...(l.ean ? { ean: l.ean } : {}) }
+    : { code: l.code, quantity: l.quantity, ...(l.typedPrice ? { price: l.price } : {}) };
 
 const CART_KEY = "verduleria.cart.v2";
 /** Cobro QR en curso: si se recarga la página, se retoma (no se pierde un pago) */
@@ -107,6 +113,8 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
   const [savingPrice, setSavingPrice] = useState(false);
   // Código inexistente: paréntesis para darlo de alta (o venderlo sin registrar) y volver a la venta
   const [quickAdd, setQuickAdd] = useState<{ code: string; from: "scan" | "code" } | null>(null);
+  // Producto sin precio: se pide el precio antes de agregarlo al ticket
+  const [pricePrompt, setPricePrompt] = useState<{ product: ProductDTO; quantity: number } | null>(null);
 
   const scaleRef = useRef<SystelScale | null>(null);
   const [scaleOn, setScaleOn] = useState(false);
@@ -251,14 +259,43 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
   const total = cart.reduce((acc, l) => acc + subtotal(l), 0);
   const isUnit = product?.unit === "UNIT";
 
+  /** Agrega al ticket. Si el producto no tiene precio, primero lo pide (o reusa el ya tipeado en este ticket). */
   function addLine(p: ProductDTO, quantity: number) {
+    if (p.price !== null) return addPricedLine({ ...p, price: p.price }, quantity, false);
+    const typed = cart.find((l) => !l.free && l.typedPrice && l.code === p.code);
+    if (typed) return addPricedLine({ ...p, price: typed.price }, quantity, true);
+    setPricePrompt({ product: p, quantity });
+  }
+
+  /** Precio puesto en el momento: si se guardó en Stock, las líneas ya tipeadas pasan a ese precio */
+  function onPriceDone(p: ProductDTO & { price: number }, saved: boolean) {
+    const quantity = pricePrompt?.quantity ?? 1;
+    setPricePrompt(null);
+    if (saved) {
+      setCart((c) => c.map((l) => (!l.free && l.code === p.code ? { ...l, price: p.price, typedPrice: false } : l)));
+    }
+    addPricedLine(p, quantity, !saved);
+  }
+
+  function addPricedLine(p: ProductDTO & { price: number }, quantity: number, typedPrice: boolean) {
     setCart((c) => {
       // Si es por unidad y ya está en el ticket, se suma a la misma línea
       const existing = p.unit === "UNIT" ? c.find((l) => !l.free && l.code === p.code) : undefined;
       if (existing) {
         return c.map((l) => (l === existing ? { ...l, quantity: l.quantity + quantity } : l));
       }
-      return [...c, { key: crypto.randomUUID(), code: p.code, name: p.name, unit: p.unit, price: p.price, quantity }];
+      return [
+        ...c,
+        {
+          key: crypto.randomUUID(),
+          code: p.code,
+          name: p.name,
+          unit: p.unit,
+          price: p.price,
+          quantity,
+          ...(typedPrice ? { typedPrice } : {}),
+        },
+      ];
     });
     setMessage({ type: "ok", text: `+ ${p.name} · ${formatQty(quantity, p.unit)} · ${formatMoney(p.price * quantity)}` });
     setProduct(null);
@@ -270,6 +307,10 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
   /** Etiqueta EAN-13 impresa por la balanza: PLU + peso (o importe) */
   async function addFromLabel(label: NonNullable<ReturnType<typeof parseScaleLabel>>) {
     const p = await fetchProduct(label.code);
+    if (p.price === null && label.mode === "TOTAL") {
+      throw new Error(`${p.name} no tiene precio: cargalo en Stock para leer etiquetas por importe`);
+    }
+    if (p.price === null) return addLine(p, p.unit === "UNIT" ? Math.max(1, Math.round(label.value)) : label.value);
     let qty = label.mode === "CANTIDAD" ? label.value : label.value / p.price;
     qty = p.unit === "UNIT" ? Math.max(1, Math.round(qty)) : Math.round(qty * 1000) / 1000;
     addLine(p, qty);
@@ -293,6 +334,7 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
     try {
       const res = await apiFetch(`/api/products/by-code/${encodeURIComponent(normalizeCode(code))}`);
       if (res.ok) {
+        beep("ok");
         const p = (await res.json()) as ProductDTO;
         if (p.unit === "UNIT") return addLine(p, 1);
         // Por kilo hace falta el peso: pasamos al modo Balanza con el producto elegido
@@ -302,10 +344,15 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
       }
       if (res.status !== 404) throw new Error("No se pudo buscar el producto");
       const label = parseScaleLabel(code);
-      if (label) return await addFromLabel(label);
+      if (label) {
+        beep("ok");
+        return await addFromLabel(label);
+      }
+      beep("error"); // no está en Stock: se abre el alta
       setMissingCode(code);
       setQuickAdd({ code: normalizeCode(code), from: "scan" });
     } catch (e) {
+      beep("error");
       setMessage({ type: "error", text: (e as Error).message });
     }
   }
@@ -393,7 +440,11 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
       const updated = data as ProductDTO;
       setProduct(updated);
       // El ticket en curso se cobra al precio actual: lo reflejamos
-      setCart((c) => c.map((l) => (!l.free && l.code === updated.code ? { ...l, price: updated.price } : l)));
+      setCart((c) =>
+        c.map((l) =>
+          !l.free && l.code === updated.code && updated.price !== null ? { ...l, price: updated.price, typedPrice: false } : l,
+        ),
+      );
       setPriceInput(null);
       setMessage({ type: "ok", text: `Precio de ${updated.name} actualizado: ${formatUnitPrice(updated.price, updated.unit)}` });
       setTimeout(() => qtyRef.current?.focus());
@@ -677,10 +728,10 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
                   <button
                     type="button"
                     className="link-btn"
-                    onClick={() => setPriceInput(String(product.price).replace(".", ","))}
+                    onClick={() => setPriceInput(product.price === null ? "" : String(product.price).replace(".", ","))}
                     style={{ marginLeft: 8, padding: "2px 8px", fontSize: 13 }}
                   >
-                    Cambiar precio
+                    {product.price === null ? "Poner precio" : "Cambiar precio"}
                   </button>
                 )}
               </>
@@ -881,6 +932,20 @@ export default function CajaClient({ mpQrEnabled }: { mpQrEnabled: boolean }) {
             rememberQr(null);
             setQr(null);
             focusCode();
+          }}
+        />
+      )}
+
+      {pricePrompt && (
+        <PricePromptModal
+          key={pricePrompt.product.id}
+          product={pricePrompt.product}
+          quantity={pricePrompt.quantity}
+          isAdmin={isAdmin}
+          onDone={onPriceDone}
+          onCancel={() => {
+            setPricePrompt(null);
+            setTimeout(() => focusCode());
           }}
         />
       )}

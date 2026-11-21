@@ -200,6 +200,13 @@ con ese nombre en vez de "Producto no registrado". `GET /api/catalog/:código` d
   encontrado se guarda en la tabla (`source = "off"`). Sin internet, simplemente no se sugiere nombre.
 - Los códigos se guardan como GTIN de 14 dígitos (con ceros a la izquierda) y se valida el dígito verificador.
 
+## Productos sin precio y bip
+
+- Un producto se puede cargar **sin precio** (Stock: dejar el precio vacío). Al venderlo, la Caja lo pide en el
+  momento. Si es admin, queda guardado como precio del producto (se puede destildar). Si es cajero, vale solo
+  para esa venta: el servidor acepta el precio tipeado únicamente para productos sin precio.
+- Cada escaneo hace **bip** (agudo = encontrado, doble grave = código desconocido) y vibra en el celular.
+
 ## Atajos de teclado (Caja)
 
 `Enter` avanzar · `F4` leer balanza · `F2` cobrar en efectivo · `Esc` cerrar ticket

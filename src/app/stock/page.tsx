@@ -6,6 +6,7 @@ import { formatQty, formatUnitPrice, normalizeCode } from "@/lib/format";
 import { apiFetch } from "@/components/SessionProvider";
 import BarcodeScanner from "@/components/BarcodeScanner";
 import { fetchCatalog, suggestedName } from "@/components/catalogLookup";
+import { beep } from "@/lib/beep";
 
 type Form = {
   id?: number;
@@ -26,9 +27,16 @@ const toForm = (p: ProductDTO): Form => ({
   brand: p.brand ?? "",
   presentation: p.presentation ?? "",
   unit: p.unit,
-  price: String(p.price),
+  price: p.price === null ? "" : String(p.price).replace(".", ","),
   quantityIn: p.quantityIn === null ? "" : String(p.quantityIn),
 });
+
+/** "" → null (sin precio); acepta "1500", "1500.50", "1500,50" o "1.500,50" */
+function toPrice(raw: string): number | null {
+  const v = raw.trim().replace(/\s|\$/g, "");
+  if (!v) return null;
+  return Number(v.includes(",") ? v.replace(/\./g, "").replace(",", ".") : v);
+}
 
 export default function StockPage() {
   const [products, setProducts] = useState<ProductDTO[]>([]);
@@ -52,7 +60,7 @@ export default function StockPage() {
       setNotice(`"${p.name}" ya está cargado. Podés cambiarle el precio.`);
     } else if (res.status === 404) {
       setForm({ ...empty, code, unit: "UNIT" });
-      setNotice("Producto nuevo: completá nombre y precio.");
+      setNotice("Producto nuevo: completá el nombre (el precio lo podés poner ahora o al cobrar).");
       const hit = await fetchCatalog(code);
       if (hit) {
         // solo si sigue siendo el mismo alta y no escribieron un nombre mientras tanto
@@ -90,7 +98,8 @@ export default function StockPage() {
       brand: form.brand.trim() || null,
       presentation: form.presentation.trim() || null,
       unit: form.unit,
-      price: Number(form.price.replace(",", ".")),
+      // vacío = sin precio: se pide en la Caja al venderlo
+      price: toPrice(form.price),
       quantityIn: form.quantityIn.trim() === "" ? null : form.quantityIn.trim().replace(",", "."),
     };
     const res = await apiFetch(form.id ? `/api/products/${form.id}` : "/api/products", {
@@ -168,12 +177,14 @@ export default function StockPage() {
             </div>
           </div>
           <div className="field">
-            <label>Precio por {form.unit === "KG" ? "kilo" : "unidad"} ($)</label>
+            <label>
+              Precio por {form.unit === "KG" ? "kilo" : "unidad"} ($){" "}
+              <span className="muted">— si lo dejás vacío, se pide en la Caja al cobrar</span>
+            </label>
             <input
               inputMode="decimal"
               value={form.price}
               onChange={(e) => setForm({ ...form, price: e.target.value })}
-              required
             />
           </div>
           <div className="field">
@@ -236,7 +247,9 @@ export default function StockPage() {
                   )}
                 </td>
                 <td><span className="badge">{p.unit === "KG" ? "Por kilo" : "Por unidad"}</span></td>
-                <td className="num">{formatUnitPrice(p.price, p.unit)}</td>
+                <td className="num">
+                  {p.price === null ? <span className="muted">Sin precio</span> : formatUnitPrice(p.price, p.unit)}
+                </td>
                 <td className="num" style={p.quantityIn !== null && p.quantityIn < 0 ? { color: "var(--red)" } : undefined}>
                   {p.quantityIn === null ? <span className="muted">—</span> : formatQty(p.quantityIn, p.unit)}
                 </td>
@@ -259,6 +272,7 @@ export default function StockPage() {
       {scanning && (
         <BarcodeScanner
           onDetected={(code) => {
+            beep("ok");
             setScanning(false);
             void loadScanned(code);
           }}

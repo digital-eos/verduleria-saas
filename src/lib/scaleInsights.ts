@@ -35,8 +35,8 @@ async function priceHistory(): Promise<Map<string, Segment[]>> {
   const changes = new Map<number, { at: number; before: string }[]>();
   for (const l of logs) {
     const d = l.details as { price?: { antes?: unknown } } | null;
-    const before = d?.price?.antes;
-    if (before == null || !l.entityId) continue;
+    if (!d?.price || !l.entityId) continue;
+    const before = d.price.antes ?? 0; // null = antes no tenía precio
     const id = Number(l.entityId);
     const list = changes.get(id) ?? [];
     list.push({ at: l.createdAt.getTime(), before: Number(before).toFixed(2) });
@@ -45,13 +45,14 @@ async function priceHistory(): Promise<Map<string, Segment[]>> {
 
   const byPrice = new Map<string, Segment[]>();
   const add = (s: Segment) => {
+    if (Number(s.price) <= 0) return; // tramo sin precio
     const list = byPrice.get(s.price) ?? [];
     list.push(s);
     byPrice.set(s.price, list);
   };
   for (const p of products) {
     // Recorre los cambios del más nuevo al más viejo: [cambio, fin) tenía el precio "después"
-    let price = p.price.toFixed(2);
+    let price = p.price === null ? "0.00" : p.price.toFixed(2);
     let to = Infinity;
     for (const c of changes.get(p.id) ?? []) {
       add({ productId: p.id, name: p.name, active: p.active, price, from: c.at, to });

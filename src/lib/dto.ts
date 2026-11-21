@@ -22,7 +22,8 @@ export type ProductDTO = {
   brand: string | null;
   presentation: string | null;
   unit: Unit;
-  price: number;
+  /** null = sin precio todavía (se pide en la Caja al venderlo) */
+  price: number | null;
   /** "Cantidad ingresada" (kg o unidades), opcional */
   quantityIn: number | null;
   active: boolean;
@@ -55,7 +56,7 @@ export const toProductDTO = (p: Product): ProductDTO => ({
   brand: p.brand,
   presentation: p.presentation,
   unit: p.unit,
-  price: Number(p.price),
+  price: p.price === null ? null : Number(p.price),
   quantityIn: p.quantityIn === null ? null : Number(p.quantityIn),
   active: p.active,
 });

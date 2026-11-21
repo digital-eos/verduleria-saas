@@ -8,9 +8,9 @@ export const formatKg = (n: number | string) => `${kg.format(Number(n))} kg`;
 export const formatQty = (n: number | string, unit: "KG" | "UNIT") =>
   unit === "KG" ? formatKg(n) : `${Number(n).toLocaleString("es-AR")} u.`;
 
-/** "$2.500,00/kg" o "$800,00/u." */
-export const formatUnitPrice = (n: number | string, unit: "KG" | "UNIT") =>
-  `${formatMoney(n)}/${unit === "KG" ? "kg" : "u."}`;
+/** "$2.500,00/kg" o "$800,00/u." ("Sin precio" si todavía no tiene) */
+export const formatUnitPrice = (n: number | string | null, unit: "KG" | "UNIT") =>
+  n === null ? "Sin precio" : `${formatMoney(n)}/${unit === "KG" ? "kg" : "u."}`;
 
 export const formatDateTime = (d: string | Date) =>
   new Date(d).toLocaleString("es-AR", {
